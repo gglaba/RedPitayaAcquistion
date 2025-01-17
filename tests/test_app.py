@@ -27,7 +27,10 @@ class TestApp(unittest.TestCase):
         base_command = "cd /root/RedPitaya/G && ./send_acquire"
         params = app.inputboxes_frame.get()
         param_str = ' '.join([str(params[ip]) for ip in params])
-        expected_command = f"{base_command} {param_str}"
+        #set isLocal to true
+        app.isLocal = False
+        isLocal_bool = "True" if app.isLocal else "False"
+        expected_command = f"{base_command} {param_str} {isLocal_bool}"
 
         # Define a proper start_acquisition method that will use execute_command
         def mock_start_acquisition(command):

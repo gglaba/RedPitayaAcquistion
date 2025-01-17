@@ -32,7 +32,6 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.command = "cd /root/RedPitaya/G && ./send_acquire" #command used to launch acquisition software on pitaya
-        self.local_command = "cd /root/RedPitaya/G && ./send_acquire_local" #command used to launch acquisition software on pitaya
         self.connections = [] #list of connected pitayas
         self.error_queue = queue.Queue() #queue for error messages
         self.selected_ips = [] #currently selected pitayas from checkboxes
@@ -40,9 +39,6 @@ class App(ctk.CTk):
             os.makedirs("Data")
         
         self.status_line = StatusLine(self)
-        logo_image = PhotoImage(file="logo.png")
-
-        self.iconphoto(False, logo_image)
         
         self.title("RedPitaya Signal Acquisition")
         self.geometry("600x420")
@@ -62,15 +58,15 @@ class App(ctk.CTk):
         self.status_line.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         self.checkboxes_frame = CheckBoxes(self, "Devices", ips=[ENV_MasterRP, ENV_SLAVE1, ENV_SLAVE2]) #creating checkbox for each device (using checkboxes class)
-        self.checkboxes_frame.grid(row=0, column=0, padx=10, pady=(10, 10), sticky="nsew")
+        self.checkboxes_frame.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="nsew")
 
         self.connect_button = ctk.CTkButton(self, text="Connect to Pitayas", command=self.start_connect_to_devices_thread) #creating connect button
         self.connect_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10)
 
         self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops'], status_line=self.status_line)
-        self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 10), sticky="nsew")
+        self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 0), sticky="nsew")
 
-        self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.check_transfer_method) #creating acquire button
+        self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.initiate_acquisition) #creating acquire button
         self.acquire_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
         self.acquire_button.configure(state="disabled")
 
@@ -78,26 +74,15 @@ class App(ctk.CTk):
         self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=10)
         self.transfer_button.configure(state="disabled")
 
-        self.use_remote_dir = BooleanVar()
-        self.use_remote_dir.set(False)
-        self.toggle_remote_dir_button = ctk.CTkSwitch(self, text="Use Remote Directory",variable=self.use_remote_dir,command=self.check_remote_setup())
-        self.toggle_remote_dir_button.grid(row=5, column=0, padx=30, pady=10)
+        self.isLocal = ctk.StringVar(value=1)
+        self.switch_local_frame = ctk.CTkFrame(self)
+        self.switch_local_frame.grid(row=4, column=0, padx=10, pady=10, sticky="w")
+        self.switch_local = ctk.CTkSwitch(self.switch_local_frame, text="Local Acquisition",command=self.get_IsLocal, variable=self.isLocal, onvalue=1, offvalue=0)
+        self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
         self.check_transfer_button() #if remote has csv files then enable transfer button
-        self.acquire_button.configure(state="normal") #enabling acquire button
-    
-    def check_remote_setup(self):
-        if self.use_remote_dir.get() and not os.path.exists(ENV_LOCAL_DIR):
-            for connection in self.connections:
-                connection.mount_remote_dir(ENV_LOCAL_DIR)
-        elif self.use_remote_dir.get() and os.path.exists(ENV_LOCAL_DIR):
-            self.status_line.update_status("Local directory set and ready")
-            self.after(1000,self.update_status("Using local directory acquistion"))
-        else:
-            self.status_line.update_status("Using ssh transfer")
-        self.after(100, self.check_remote_setup)
             
 
     def check_new_checked_boxes(self): #checking if new checkboxes are checked, if so and not connected already enable connect button
@@ -123,44 +108,6 @@ class App(ctk.CTk):
             else:
                 self.transfer_button.configure(state="disabled")
     
-    def check_transfer_method(self):
-        if self.use_remote_dir.get():
-            self.start_local_acquistion()
-        else:
-            self.open_progress_window()
-    
-    def start_local_acquistion(self):
-        self.status_line.update_status("Starting local acquisition")
-        threading.Thread(target=self.run_local_script, args=(self.local_command,), daemon=True).start()
-        #self.status_line.start_timer()
-        #for connection in self.connections:
-            #threading.Thread(target=self.run_local_acquisition, args=(connection, self.command), daemon=True).start()
-    
-    def run_local_script(self, connection, command):
-        for connection in self.connections:
-            threading.Thread(target=self.run_local_acquisition, args=(connection, command), daemon=True).start()
-    
-    def run_local_acquisition(self, connection, command):
-        self.acquire_button.configure(state="normal")
-        try:
-            params = self.inputboxes_frame.get()
-            print(f"Parameters received: {params}")  # Debugging statement
-
-            # Check if all required parameters are present
-            required_params = ["Decimation", "Buffer size", "Delay", "Loops"]
-            for param in required_params:
-                if param not in params:
-                    raise KeyError(f"Missing parameter: {param}")
-
-            # Assuming params is a dictionary with keys as parameter names and values as parameter values
-            param_str = ' '.join([str(params[param]) for param in required_params])
-            full_command = f"{command} {param_str}"
-            print(f"Executing command: {full_command}")  # Debugging statement
-
-            stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
-            connection.start_listener() #starting listener for stdout and stderr
-        except Exception as e:
-            e_msg = f"{connection}: {str(e)}"
 
     def check_errors(self):
         try:
@@ -171,10 +118,16 @@ class App(ctk.CTk):
             self.show_error(error_message) #if there is show error message using tkinter messagebox
         self.after(100, self.check_errors)
 
+    def get_IsLocal(self):
+        bool_value = self.isLocal.get()
+        bool_value = bool(int(bool_value))
+        print(f"IsLocal: {bool_value}")
+        return bool_value
+
     def show_error(self,error_text): #simple method to pop up tkinter messagebox with error message
         tkinter.messagebox.showerror("Error",error_text)
 
-    def open_progress_window(self): #method to open progress window and start acquisition on pitaya
+    def initiate_acquisition(self): #method to open progress window and start acquisition on pitaya
         self.progress_window = ProgressWindow(self)
         self.progress_window.focus_set()
         self.progress_window.attributes('-topmost', True) #forcing window to stay on top
@@ -218,41 +171,20 @@ class App(ctk.CTk):
             threading.Thread(target=self.run_acquisition, args=(connection, command), daemon=True).start()
 
 
-    # def run_acquisition(self, connection, command): #running acquisition on pitaya
-    #     self.acquire_button.configure(state="normal")
-    #     try:
-    #         params = self.inputboxes_frame.get()
-    #         # Assuming params is a dictionary with keys as parameter names and values as parameter values
-    #         param_str = ' '.join([str(params[param]) for param in ["decimation", "buffer_size", "delay", "loops_number"]])
-    #         full_command = f"{command} {param_str}"
-    #         print(f"Executing command: {full_command}")  # Debugging statement
-    #         stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
-    #         connection.start_listener()#starting listener for stdout and stderr
-    #     except Exception as e:
-    #         e_msg = f"{connection}: {str(e)}" #if error occured show error message
-    #         print(e_msg)
-    #     finally:
-    #         self.progress_window.close() 
-    #         self.status_line.stop_timer()#closing progress window at the end of acquisition process
-    #     self.check_transfer_button() #check if csv data to transfer is available
-
     def run_acquisition(self, connection, command): #running acquisition on pitaya
         self.acquire_button.configure(state="normal")
         try:
             params = self.inputboxes_frame.get()
             print(f"Parameters received: {params}")  # Debugging statement
-
             # Check if all required parameters are present
             required_params = ["Decimation", "Buffer size", "Delay", "Loops"]
             for param in required_params:
                 if param not in params:
                     raise KeyError(f"Missing parameter: {param}")
-
-            # Assuming params is a dictionary with keys as parameter names and values as parameter values
             param_str = ' '.join([str(params[param]) for param in required_params])
-            full_command = f"{command} {param_str}"
+            isLocal_str = str(self.get_IsLocal())
+            full_command = f"{command} {param_str} {isLocal_str}"
             print(f"Executing command: {full_command}")  # Debugging statement
-
             stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
             connection.start_listener() #starting listener for stdout and stderr
         except Exception as e:
@@ -274,11 +206,6 @@ class App(ctk.CTk):
                 self.status_line.show_transfer_status(file)  # Show transfer status
                 connection.transfer_file(file, ENV_LOCALPATH)
         self.status_line.update_status("File transfer completed")
-
-    # def transfer_files(self): #this might take some time as it is transfering files from all connected devices but not in separate threads and each file is about 20mb
-    #     for connection in self.connections:
-    #         connection.transfer_all_csv_files(ENV_REMOTEPATH, ENV_LOCALPATH)
-    #     self.check_transfer_button()
 
     def disconnect_from_device(self, ip): #disconnecting from pitaya with disconnect button
         for connection in self.connections:
