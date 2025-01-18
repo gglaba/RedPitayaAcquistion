@@ -11,6 +11,7 @@ from ProgressWindow import ProgressWindow
 from CheckBoxes import CheckBoxes
 from InputBoxes import InputBoxes
 from StatusLine import StatusLine
+from UI_setup import setup_ui
 
 ctk.set_appearance_mode("dark")
 load_dotenv()
@@ -31,6 +32,7 @@ ENV_ARCHIVE_DIR = os.getenv("ARCHIVEPATH") # Archive directory for CSV files
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+        setup_ui(self, ENV_MasterRP, ENV_SLAVE1, ENV_SLAVE2)  # Pass the environment variables
         self.command = "cd /root/RedPitaya/G && ./send_acquire" #command used to launch acquisition software on pitaya
         self.connections = [] #list of connected pitayas
         self.error_queue = queue.Queue() #queue for error messages
@@ -39,46 +41,6 @@ class App(ctk.CTk):
             os.makedirs("Data")
         
         self.status_line = StatusLine(self)
-        
-        self.title("RedPitaya Signal Acquisition")
-        self.geometry("600x420")
-        self.grid_columnconfigure(0, weight=1)
-        self.resizable(False, False) #disabling resizing of the window
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_rowconfigure(2, weight=1)
-        self.grid_rowconfigure(3, weight=0)
-        self.grid_rowconfigure(4, weight=0)
-        self.grid_rowconfigure(5, weight=0)
-        self.grid_rowconfigure(6, weight=0)
-
-        self.status_line.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
-
-        self.checkboxes_frame = CheckBoxes(self, "Devices", ips=[ENV_MasterRP, ENV_SLAVE1, ENV_SLAVE2]) #creating checkbox for each device (using checkboxes class)
-        self.checkboxes_frame.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="nsew")
-
-        self.connect_button = ctk.CTkButton(self, text="Connect to Pitayas", command=self.start_connect_to_devices_thread) #creating connect button
-        self.connect_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10)
-
-        self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops'], status_line=self.status_line)
-        self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 0), sticky="nsew")
-
-        self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.initiate_acquisition) #creating acquire button
-        self.acquire_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
-        self.acquire_button.configure(state="disabled")
-
-        self.transfer_button = ctk.CTkButton(self, text="Transfer Data", command=self.transfer_files) #creating transfer button
-        self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=10)
-        self.transfer_button.configure(state="disabled")
-
-        self.isLocal = ctk.StringVar(value=1)
-        self.switch_local_frame = ctk.CTkFrame(self)
-        self.switch_local_frame.grid(row=4, column=0, padx=10, pady=10, sticky="w")
-        self.switch_local = ctk.CTkSwitch(self.switch_local_frame, text="Local Acquisition",command=self.get_IsLocal, variable=self.isLocal, onvalue=1, offvalue=0)
-        self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
