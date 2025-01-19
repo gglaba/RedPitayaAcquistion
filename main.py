@@ -15,7 +15,7 @@ from StatusLine import StatusLine
 ctk.set_appearance_mode("dark")
 load_dotenv()
 
-ENV_MasterRP = os.getenv("MASTERRP")
+ENV_MASTERRP = os.getenv("MASTER_RP")
 ENV_SLAVE1 = os.getenv("SLAVE1")
 ENV_SLAVE2 = os.getenv("SLAVE2")
 ENV_PRIVATE_KEY_PATH = os.getenv("PRIVATE_KEY_PATH")
@@ -41,8 +41,9 @@ class App(ctk.CTk):
         self.status_line = StatusLine(self)
         
         self.title("RedPitaya Signal Acquisition")
-        self.geometry("600x420")
+        self.geometry("600x500")
         self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
         self.resizable(False, False) #disabling resizing of the window
 
         self.grid_columnconfigure(0, weight=1)
@@ -54,10 +55,11 @@ class App(ctk.CTk):
         self.grid_rowconfigure(4, weight=0)
         self.grid_rowconfigure(5, weight=0)
         self.grid_rowconfigure(6, weight=0)
+        self.grid_rowconfigure(7, weight=0)
 
         self.status_line.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
-        self.checkboxes_frame = CheckBoxes(self, "Devices", ips=[ENV_MasterRP, ENV_SLAVE1, ENV_SLAVE2]) #creating checkbox for each device (using checkboxes class)
+        self.checkboxes_frame = CheckBoxes(self, "Devices", ips=[ENV_MASTERRP, ENV_SLAVE1, ENV_SLAVE2]) #creating checkbox for each device (using checkboxes class)
         self.checkboxes_frame.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="nsew")
 
         self.connect_button = ctk.CTkButton(self, text="Connect to Pitayas", command=self.start_connect_to_devices_thread) #creating connect button
@@ -77,8 +79,14 @@ class App(ctk.CTk):
         self.isLocal = ctk.StringVar(value=1)
         self.switch_local_frame = ctk.CTkFrame(self)
         self.switch_local_frame.grid(row=4, column=0, padx=10, pady=10, sticky="w")
-        self.switch_local = ctk.CTkSwitch(self.switch_local_frame, text="Local Acquisition",command=self.get_IsLocal, variable=self.isLocal, onvalue=1, offvalue=0)
+        self.switch_local = ctk.CTkSwitch(self.switch_local_frame, text="Local Acquisition",command= lambda:self.get_Switch_bool(self.isLocal), variable=self.isLocal, onvalue=1, offvalue=0)
         self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+
+        self.isMerge = ctk.StringVar(value=1)
+        #self.switch_merge_frame = ctk.CTkFrame(self)
+        #self.switch_merge_frame.grid(row=5, column=0, padx=10, pady=10, sticky="w")
+        self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Merge CSV Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
+        self.switch_merge.grid(row=1, column=0, padx=10, pady=10, sticky="w")
 
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
@@ -117,12 +125,13 @@ class App(ctk.CTk):
         else:
             self.show_error(error_message) #if there is show error message using tkinter messagebox
         self.after(100, self.check_errors)
-
-    def get_IsLocal(self):
-        bool_value = self.isLocal.get()
+    
+    def get_Switch_bool(self,switch_var):
+        bool_value = switch_var.get()
         bool_value = bool(int(bool_value))
-        print(f"IsLocal: {bool_value}")
+        print(f"{switch_var}:{bool_value}")
         return bool_value
+
 
     def show_error(self,error_text): #simple method to pop up tkinter messagebox with error message
         tkinter.messagebox.showerror("Error",error_text)
@@ -182,7 +191,8 @@ class App(ctk.CTk):
                 if param not in params:
                     raise KeyError(f"Missing parameter: {param}")
             param_str = ' '.join([str(params[param]) for param in required_params])
-            isLocal_str = str(self.get_IsLocal())
+            #isLocal_str = str(self.get_IsLocal())
+            isLocal_str = str(self.get_Switch_bool(self.isLocal))
             full_command = f"{command} {param_str} {isLocal_str}"
             print(f"Executing command: {full_command}")  # Debugging statement
             stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
