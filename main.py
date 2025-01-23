@@ -26,6 +26,12 @@ ENV_REMOTEPATH = os.getenv("REMOTEPATH")
 ENV_LOCAL_DIR = os.getenv("LOCAL_DIR") # Local directory to mount remote directory
 ENV_ARCHIVE_DIR = os.getenv("ARCHIVEPATH") # Archive directory for CSV files
 
+#Create dictionary of pitaya name and mapped share path
+pitaya_dict = {
+    ENV_MASTERRP: 'Z:/',
+    ENV_SLAVE1: 'Y:/',
+    ENV_SLAVE2: 'X:/'
+}
 
 
 class App(ctk.CTk):
@@ -76,13 +82,13 @@ class App(ctk.CTk):
         self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=10)
         self.transfer_button.configure(state="disabled")
 
-        self.isLocal = ctk.StringVar(value=1)
+        self.isLocal = ctk.StringVar(value=0)
         self.switch_local_frame = ctk.CTkFrame(self)
         self.switch_local_frame.grid(row=4, column=0, padx=10, pady=10, sticky="w")
         self.switch_local = ctk.CTkSwitch(self.switch_local_frame, text="Local Acquisition",command= lambda:self.get_Switch_bool(self.isLocal), variable=self.isLocal, onvalue=1, offvalue=0)
         self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
-        self.isMerge = ctk.StringVar(value=1)
+        self.isMerge = ctk.StringVar(value=0)
         #self.switch_merge_frame = ctk.CTkFrame(self)
         #self.switch_merge_frame.grid(row=5, column=0, padx=10, pady=10, sticky="w")
         self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Merge CSV Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
@@ -112,7 +118,6 @@ class App(ctk.CTk):
             print(f"CSV files for {connection.ip}: {csv_files}")  # Debugging statement
             if len(csv_files) != 0:
                 self.transfer_button.configure(state="normal")
-                connection.merge_csv_files(ENV_REMOTEPATH, ENV_ARCHIVE_DIR)
             else:
                 self.transfer_button.configure(state="disabled")
     
@@ -205,6 +210,11 @@ class App(ctk.CTk):
             self.progress_window.close() 
             self.status_line.stop_timer() #closing progress window at the end of acquisition process
         self.check_transfer_button() #check if csv data to transfer is available
+        #if self.get_Switch_bool(self.isMerge) == 1:
+            #connection.merge_csv_files(True,ENV_LOCALPATH, ENV_ARCHIVE_DIR,['Z:/'])
+        connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
+        self.after(1000,self.status_line.update_status("Merging completed"))
+        #connection.merge_csv_files(True,ENV_REMOTEPATH, ENV_ARCHIVE_DIR,['Y:/','Z:/']) #merging csv files after acquisition
 
     def transfer_files(self):
         for connection in self.connections:
@@ -214,7 +224,7 @@ class App(ctk.CTk):
                 continue
             for file in files_to_transfer:
                 self.status_line.show_transfer_status(file)  # Show transfer status
-                connection.transfer_file(file, ENV_LOCALPATH)
+                connection.transfer_file(file, ENV_LOCALPATH) #merging csv files after acquisition
         self.status_line.update_status("File transfer completed")
 
     def disconnect_from_device(self, ip): #disconnecting from pitaya with disconnect button

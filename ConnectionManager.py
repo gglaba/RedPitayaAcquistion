@@ -1,3 +1,4 @@
+from collections import defaultdict
 import paramiko
 import os
 import fnmatch
@@ -8,7 +9,8 @@ from scp import SCPClient
 import select
 import pandas as pd
 import shutil
-
+import concurrent.futures
+import time
 #class for managing connection - basically trying to keep backend separate
 
 class ConnectionManager:
@@ -130,18 +132,66 @@ class ConnectionManager:
                     self.app.error_queue.put(f"{self.ip}: Failed to transfer {csv_file}. Error: {str(e)}") #for any other error - messagebox
             
 
-    def merge_csv_files(self, isLocal, directory, archive_path, drive_paths=None):
+    # def merge_csv_files(self,isMerge, isLocal, directory, archive_path, drive_paths=None):
+    #     """
+    #     If isLocal true get csvs from pitaya shares and merge
+    #     If isLocal false the files are transfered first
+    #     """
+    #     if isLocal:
+    #         all_csv_files = []
+    #         drive_paths = drive_paths
+
+    #         for drive_path in drive_paths:
+    #             if not os.path.exists(drive_path):
+    #                 #throw error
+    #                 self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
+    #                 return
+
+    #             all_csv_files += [
+    #                 os.path.join(drive_path, f)
+    #                 for f in os.listdir(drive_path)
+    #                 if f.endswith('.csv')
+    #             ]
+    #         for csv_path in all_csv_files:
+    #             shutil.move(csv_path, directory)
+        
+
+    #     if isMerge:
+    #         print("Merging CSV files")
+            
+
+    #         csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
+    #         dataframes = [pd.read_csv(os.path.join(directory, f)) for f in csv_files]
+    #         merged_df = pd.concat(dataframes, axis=1)
+
+    #         merged_file_name = '_'.join([os.path.splitext(f)[0] for f in csv_files]) + '_merged.csv'
+    #         output_file = os.path.join(directory, merged_file_name)
+    #         merged_df.to_csv(output_file, index=False)
+
+    #         if not os.path.exists(archive_path):
+    #             os.makedirs(archive_path)
+
+    #         for f in csv_files:
+    #             shutil.move(os.path.join(directory, f), os.path.join(archive_path, f))
+
+    #         return output_file
+    #     else:
+    #         print("Moving CSV")
+
+
+
+    def merge_csv_files(self, isMerge, isLocal, directory, archive_path, drive_paths=None):
         """
         If isLocal true get csvs from pitaya shares and merge
-        If isLocal false the files are transfered first
+        If isLocal false the files are transferred first
         """
         if isLocal:
             all_csv_files = []
-            drive_paths = drive_paths or [r"path\to\driveA", r"path\to\driveB", r"path\to\driveC"]
+            drive_paths = drive_paths
 
             for drive_path in drive_paths:
                 if not os.path.exists(drive_path):
-                    #throw error
+                    # throw error
                     self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
                     return
 
@@ -150,23 +200,34 @@ class ConnectionManager:
                     for f in os.listdir(drive_path)
                     if f.endswith('.csv')
                 ]
-            for csv_path in all_csv_files:
-                shutil.move(csv_path, directory)
 
-        print("Merging CSV files")
+            start_time = time.time()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = [executor.submit(shutil.move, csv_path, directory) for csv_path in all_csv_files]
+                concurrent.futures.wait(futures)
+            end_time = time.time()
+            print(f"Time taken to move files: {end_time - start_time} seconds")
 
-        csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
-        dataframes = [pd.read_csv(os.path.join(directory, f)) for f in csv_files]
-        merged_df = pd.concat(dataframes, axis=1)
+        if isMerge:
+            print("Merging CSV files")
+            csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
+            dataframes = [pd.read_csv(os.path.join(directory, f)) for f in csv_files]
+            merged_df = pd.concat(dataframes, axis=1)
 
-        merged_file_name = '_'.join([os.path.splitext(f)[0] for f in csv_files]) + '_merged.csv'
-        output_file = os.path.join(directory, merged_file_name)
-        merged_df.to_csv(output_file, index=False)
+            merged_file_name = '_'.join([os.path.splitext(f)[0] for f in csv_files]) + '_merged.csv'
+            output_file = os.path.join(directory, merged_file_name)
+            merged_df.to_csv(output_file, index=False)
 
-        if not os.path.exists(archive_path):
-            os.makedirs(archive_path)
+            if not os.path.exists(archive_path):
+                os.makedirs(archive_path)
 
-        for f in csv_files:
-            shutil.move(os.path.join(directory, f), os.path.join(archive_path, f))
+            start_time = time.time()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = [executor.submit(shutil.move, os.path.join(directory, f), os.path.join(archive_path, f)) for f in csv_files]
+                concurrent.futures.wait(futures)
+            end_time = time.time()
+            print(f"Time taken to move files: {end_time - start_time} seconds")
 
-        return output_file
+            return output_file
+        else:
+            print("Moving CSV files only")
