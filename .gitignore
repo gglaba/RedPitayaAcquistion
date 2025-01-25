@@ -5,3 +5,5 @@ debug.log
 /Data/archive
 /Data
 /Archive
+/__pycache__
+/tests/__pycache__
