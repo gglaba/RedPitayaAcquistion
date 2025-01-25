@@ -11,6 +11,7 @@ import pandas as pd
 import shutil
 import concurrent.futures
 import time
+import re
 #class for managing connection - basically trying to keep backend separate
 
 class ConnectionManager:
@@ -91,7 +92,7 @@ class ConnectionManager:
         finally:
             sftp.close()
 
-    def transfer_all_csv_files(self, remote_directory, local_directory): #transfering data files from pitaya to local machine
+    def transfer_all_csv_files(self, remote_directory, local_directory,isMerge): #transfering data files from pitaya to local machine
 
         if not os.path.exists(local_directory): #making sure local directory exists, not doing it atm for remote directory might add in future
             print(f"Local directory {local_directory} does not exist.")
@@ -130,61 +131,11 @@ class ConnectionManager:
                 except Exception as e:
                     print(f"Failed to transfer {csv_file}. Error: {str(e)}")
                     self.app.error_queue.put(f"{self.ip}: Failed to transfer {csv_file}. Error: {str(e)}") #for any other error - messagebox
-            
-
-    # def merge_csv_files(self,isMerge, isLocal, directory, archive_path, drive_paths=None):
-    #     """
-    #     If isLocal true get csvs from pitaya shares and merge
-    #     If isLocal false the files are transfered first
-    #     """
-    #     if isLocal:
-    #         all_csv_files = []
-    #         drive_paths = drive_paths
-
-    #         for drive_path in drive_paths:
-    #             if not os.path.exists(drive_path):
-    #                 #throw error
-    #                 self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
-    #                 return
-
-    #             all_csv_files += [
-    #                 os.path.join(drive_path, f)
-    #                 for f in os.listdir(drive_path)
-    #                 if f.endswith('.csv')
-    #             ]
-    #         for csv_path in all_csv_files:
-    #             shutil.move(csv_path, directory)
-        
-
-    #     if isMerge:
-    #         print("Merging CSV files")
-            
-
-    #         csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
-    #         dataframes = [pd.read_csv(os.path.join(directory, f)) for f in csv_files]
-    #         merged_df = pd.concat(dataframes, axis=1)
-
-    #         merged_file_name = '_'.join([os.path.splitext(f)[0] for f in csv_files]) + '_merged.csv'
-    #         output_file = os.path.join(directory, merged_file_name)
-    #         merged_df.to_csv(output_file, index=False)
-
-    #         if not os.path.exists(archive_path):
-    #             os.makedirs(archive_path)
-
-    #         for f in csv_files:
-    #             shutil.move(os.path.join(directory, f), os.path.join(archive_path, f))
-
-    #         return output_file
-    #     else:
-    #         print("Moving CSV")
 
 
 
     def merge_csv_files(self, isMerge, isLocal, directory, archive_path, drive_paths=None):
-        """
-        If isLocal true get csvs from pitaya shares and merge
-        If isLocal false the files are transferred first
-        """
+
         if isLocal:
             all_csv_files = []
             drive_paths = drive_paths
@@ -211,12 +162,25 @@ class ConnectionManager:
         if isMerge:
             print("Merging CSV files")
             csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
-            dataframes = [pd.read_csv(os.path.join(directory, f)) for f in csv_files]
-            merged_df = pd.concat(dataframes, axis=1)
 
-            merged_file_name = '_'.join([os.path.splitext(f)[0] for f in csv_files]) + '_merged.csv'
-            output_file = os.path.join(directory, merged_file_name)
-            merged_df.to_csv(output_file, index=False)
+            date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')  # Assuming date format is YYYY_MM_DD_HH_MM_SS
+            grouped_files = defaultdict(list)
+
+            for f in csv_files:
+                match = date_pattern.search(f)
+                if match:
+                    date = match.group(0)
+                    grouped_files[date].append(f)
+
+            merged_files = []
+            for date, files in grouped_files.items():
+                dataframes = [pd.read_csv(os.path.join(directory, f)) for f in files]
+                merged_df = pd.concat(dataframes, axis=1)
+
+                merged_file_name = f"{date}_merged.csv"
+                output_file = os.path.join(directory, merged_file_name)
+                merged_df.to_csv(output_file, index=False)
+                merged_files.append(output_file)
 
             if not os.path.exists(archive_path):
                 os.makedirs(archive_path)
@@ -228,6 +192,6 @@ class ConnectionManager:
             end_time = time.time()
             print(f"Time taken to move files: {end_time - start_time} seconds")
 
-            return output_file
+            return merged_files
         else:
             print("Moving CSV files only")

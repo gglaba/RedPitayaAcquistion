@@ -210,15 +210,13 @@ class App(ctk.CTk):
             self.progress_window.close() 
             self.status_line.stop_timer() #closing progress window at the end of acquisition process
         self.check_transfer_button() #check if csv data to transfer is available
-        #if self.get_Switch_bool(self.isMerge) == 1:
-            #connection.merge_csv_files(True,ENV_LOCALPATH, ENV_ARCHIVE_DIR,['Z:/'])
         connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
         self.after(1000,self.status_line.update_status("Merging completed"))
         #connection.merge_csv_files(True,ENV_REMOTEPATH, ENV_ARCHIVE_DIR,['Y:/','Z:/']) #merging csv files after acquisition
 
     def transfer_files(self):
         for connection in self.connections:
-            files_to_transfer = connection.transfer_all_csv_files(ENV_REMOTEPATH, ENV_LOCALPATH) # transferring files from pitaya to local machine
+            files_to_transfer = connection.transfer_all_csv_files(ENV_REMOTEPATH, ENV_LOCALPATH,self.get_Switch_bool(self.isMerge)) # transferring files from pitaya to local machine
             if files_to_transfer is None:
                 self.status_line.update_status("No files to transfer")
                 continue
