@@ -135,14 +135,13 @@ class ConnectionManager:
 
 
     def merge_csv_files(self, isMerge, isLocal, directory, archive_path, drive_paths=None):
-
         if isLocal:
             all_csv_files = []
             drive_paths = drive_paths
 
             for drive_path in drive_paths:
                 if not os.path.exists(drive_path):
-                    # throw error
+                    # Throw error
                     self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
                     return
 
@@ -185,9 +184,14 @@ class ConnectionManager:
             if not os.path.exists(archive_path):
                 os.makedirs(archive_path)
 
+            # Move only individual files to the archive, exclude merged files
             start_time = time.time()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = [executor.submit(shutil.move, os.path.join(directory, f), os.path.join(archive_path, f)) for f in csv_files]
+                futures = [
+                    executor.submit(shutil.move, os.path.join(directory, f), os.path.join(archive_path, f))
+                    for f in csv_files
+                    if f not in merged_files  # Exclude merged files
+                ]
                 concurrent.futures.wait(futures)
             end_time = time.time()
             print(f"Time taken to move files: {end_time - start_time} seconds")

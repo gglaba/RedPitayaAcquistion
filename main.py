@@ -23,10 +23,9 @@ ENV_USERNAME = os.getenv("USERNAME")
 ENV_PASSWORD = os.getenv("PASSWORD")
 ENV_LOCALPATH = os.getenv("LOCALPATH")
 ENV_REMOTEPATH = os.getenv("REMOTEPATH")
-ENV_LOCAL_DIR = os.getenv("LOCAL_DIR") # Local directory to mount remote directory
-ENV_ARCHIVE_DIR = os.getenv("ARCHIVEPATH") # Archive directory for CSV files
+ENV_LOCAL_DIR = os.getenv("LOCAL_DIR")
+ENV_ARCHIVE_DIR = os.getenv("ARCHIVEPATH") 
 
-#Create dictionary of pitaya name and mapped share path
 pitaya_dict = {
     ENV_MASTERRP: 'Z:/',
     ENV_SLAVE1: 'Y:/',
@@ -71,7 +70,7 @@ class App(ctk.CTk):
         self.connect_button = ctk.CTkButton(self, text="Connect to Pitayas", command=self.start_connect_to_devices_thread) #creating connect button
         self.connect_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10)
 
-        self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops'], status_line=self.status_line)
+        self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops','Time'], status_line=self.status_line)
         self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 0), sticky="nsew")
 
         self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.initiate_acquisition) #creating acquire button
@@ -81,6 +80,14 @@ class App(ctk.CTk):
         self.transfer_button = ctk.CTkButton(self, text="Transfer Data", command=self.transfer_files) #creating transfer button
         self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=10)
         self.transfer_button.configure(state="disabled")
+
+        self.stop_button = ctk.CTkButton(self, text="STOP", command=self.stop_acquisition) #creating stop button
+        self.stop_button.grid(row=2, column=0,columnspan=2, padx=10, pady=10,sticky="new")
+        self.stop_button.grid_remove()
+
+        self.abort_button = ctk.CTkButton(self, text="ABORT", command=self.abort_acquisition) #creating abort button
+        self.abort_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10,sticky="nsew")
+        self.abort_button.grid_remove()
 
         self.isLocal = ctk.StringVar(value=0)
         self.switch_local_frame = ctk.CTkFrame(self)
@@ -97,8 +104,27 @@ class App(ctk.CTk):
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
         self.check_transfer_button() #if remote has csv files then enable transfer button
-            
+        self.bind("<Return>", lambda event:self.initiate_acquisition())
+        self.acquire_button.configure(state="normal")
 
+    def show_acquisition_view(self): #showing acquisition view
+        self.connect_button.grid_remove()
+        self.acquire_button.grid_remove()
+        self.transfer_button.grid_remove()
+        self.switch_local_frame.grid_remove()
+        self.switch_merge.grid_remove()
+        self.stop_button.grid()
+        self.abort_button.grid()
+
+    def show_main_view(self): #showing main view
+        self.stop_button.grid_remove()
+        self.abort_button.grid_remove()
+        self.connect_button.grid()
+        self.acquire_button.grid()
+        self.transfer_button.grid()
+        self.switch_local_frame.grid()
+        self.switch_merge.grid()
+    
     def check_new_checked_boxes(self): #checking if new checkboxes are checked, if so and not connected already enable connect button
         selected_ips = self.checkboxes_frame.get()
         if selected_ips != self.selected_ips:
@@ -142,6 +168,7 @@ class App(ctk.CTk):
         tkinter.messagebox.showerror("Error",error_text)
 
     def initiate_acquisition(self): #method to open progress window and start acquisition on pitaya
+        self.show_acquisition_view()
         self.progress_window = ProgressWindow(self)
         self.progress_window.focus_set()
         self.progress_window.attributes('-topmost', True) #forcing window to stay on top
@@ -196,7 +223,6 @@ class App(ctk.CTk):
                 if param not in params:
                     raise KeyError(f"Missing parameter: {param}")
             param_str = ' '.join([str(params[param]) for param in required_params])
-            #isLocal_str = str(self.get_IsLocal())
             isLocal_str = str(self.get_Switch_bool(self.isLocal))
             full_command = f"{command} {param_str} {isLocal_str}"
             print(f"Executing command: {full_command}")  # Debugging statement
@@ -212,7 +238,46 @@ class App(ctk.CTk):
         self.check_transfer_button() #check if csv data to transfer is available
         connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
         self.after(1000,self.status_line.update_status("Merging completed"))
-        #connection.merge_csv_files(True,ENV_REMOTEPATH, ENV_ARCHIVE_DIR,['Y:/','Z:/']) #merging csv files after acquisition
+        self.show_main_view()
+
+    # def run_acquisition(self, connection, command): #running acquisition on pitaya
+    #     self.acquire_button.configure(state="normal")
+    #     try:
+    #         params = self.inputboxes_frame.get()
+    #         print(f"Parameters received: {params}")  # Debugging statement
+    #         # Check if all required parameters are present
+    #         required_params = ["Decimation", "Buffer size", "Delay", "Loops"]
+    #         for param in required_params:
+    #             if param not in params:
+    #                 raise KeyError(f"Missing parameter: {param}")
+    #         param_str = ' '.join([str(params[param]) for param in required_params])
+    #         #isLocal_str = str(self.get_IsLocal())
+    #         isLocal_str = str(self.get_Switch_bool(self.isLocal))
+    #         full_command = f"{command} {param_str} {isLocal_str}"
+    #         print(f"Executing command: {full_command}")  # Debugging statement
+    #         stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
+    #         connection.start_listener() #starting listener for stdout and stderr
+    #     except Exception as e:
+    #         e_msg = f"{connection}: {str(e)}" #if error occurred show error message
+    #         print(e_msg)
+    #         self.error_queue.put(e_msg)
+    #     finally:
+    #         self.progress_window.close() 
+    #         self.status_line.stop_timer() #closing progress window at the end of acquisition process
+    #     self.check_transfer_button() #check if csv data to transfer is available
+    #     connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
+    #     self.after(1000,self.status_line.update_status("Merging completed"))
+    #     #connection.merge_csv_files(True,ENV_REMOTEPATH, ENV_ARCHIVE_DIR,['Y:/','Z:/']) #merging csv files after acquisition
+
+    def stop_acquisition(self): #stopping acquisition on pitaya
+        for connection in self.connections:
+            connection.execute_command("echo 'STOP' > /tmp/acq_control.txt") #sending stop command to pitaya
+        self.show_main_view()
+
+    def abort_acquisition(self): #aborting acquisition on pitaya
+        for connection in self.connections:
+            connection.execute_command("echo 'ABORT' > /tmp/acq_control.txt")
+        self.show_main_view()
 
     def transfer_files(self):
         for connection in self.connections:
