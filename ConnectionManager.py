@@ -109,93 +109,177 @@ class ConnectionManager:
 
             print(f"Remote files: {remote_files}")
 
-            csv_files = [file for file in remote_files if file.endswith('.csv')] #tmp location in pitaya has other files so filtering only csv files
+            data_files = [file for file in remote_files if file.endswith('.csv') or file.endswith('.bin')] #tmp location in pitaya has other files so filtering only csv files
 
             # Transfer each CSV file
-            for csv_file in csv_files:
-                remote_path = os.path.join(remote_directory, csv_file).replace("\\", "/")#replacing backslashes with forward slashes
-                local_path = os.path.join(local_directory, csv_file)
+            for file in data_files:
+                remote_path = os.path.join(remote_directory, file).replace("\\", "/")#replacing backslashes with forward slashes
+                local_path = os.path.join(local_directory, file)
                 try:
                     scp.get(remote_path, local_path) #transfering file
-                    print(f"Successfully transferred {csv_file}.")
+                    print(f"Successfully transferred {file}.")
                     remote_file_size = self.client.exec_command(f"wc -c < {remote_path}")[1].read().decode('utf-8').strip() #getting file size of remote file
                     local_file_size = os.path.getsize(local_path) #getting file size of local file
                     size_difference = abs(int(remote_file_size) - local_file_size) #making sure file sizes match before deleting remote file
                     if size_difference <= 10240:  # Allow a difference of up to 10KB - dont know how much linux - windows file size difference might be
                         # Delete the file on the remote server
                         self.client.exec_command(f"rm {remote_path}")
-                        print(f"Successfully deleted {csv_file} on the remote server.")
+                        print(f"Successfully deleted {file} on the remote server.")
                     else:
-                        print(f"File sizes do not match for {csv_file}. Not deleting the remote file.")
-                        self.app.error_queue.put(f"{self.ip}: File sizes do not match for {csv_file}. Not deleting the remote file.") #if file sizes dont match, messagebox appears
+                        print(f"File sizes do not match for {file}. Not deleting the remote file.")
+                        self.app.error_queue.put(f"{self.ip}: File sizes do not match for {file}. Not deleting the remote file.") #if file sizes dont match, messagebox appears
                 except Exception as e:
-                    print(f"Failed to transfer {csv_file}. Error: {str(e)}")
-                    self.app.error_queue.put(f"{self.ip}: Failed to transfer {csv_file}. Error: {str(e)}") #for any other error - messagebox
-
-
+                    print(f"Failed to transfer {file}. Error: {str(e)}")
+                    self.app.error_queue.put(f"{self.ip}: Failed to transfer {file}. Error: {str(e)}") #for any other error - messagebox
 
     def merge_csv_files(self, isMerge, isLocal, directory, archive_path, drive_paths=None):
         if isLocal:
-            all_csv_files = []
-            drive_paths = drive_paths
-
+            all_data_files = []
             for drive_path in drive_paths:
                 if not os.path.exists(drive_path):
-                    # Throw error
                     self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
                     return
 
-                all_csv_files += [
+                all_data_files += [
                     os.path.join(drive_path, f)
                     for f in os.listdir(drive_path)
-                    if f.endswith('.csv')
+                    if f.endswith('.csv') or f.endswith('.bin')
                 ]
 
+            # Move files in parallel
             start_time = time.time()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = [executor.submit(shutil.move, csv_path, directory) for csv_path in all_csv_files]
+                futures = [executor.submit(shutil.move, f, directory) for f in all_data_files]
                 concurrent.futures.wait(futures)
             end_time = time.time()
-            print(f"Time taken to move files: {end_time - start_time} seconds")
+            print(f"Time taken to move files: {end_time - start_time:.2f} seconds")
 
         if isMerge:
-            print("Merging CSV files")
-            csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
+            print("Merging CSV and BIN files")
 
-            date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')  # Assuming date format is YYYY_MM_DD_HH_MM_SS
-            grouped_files = defaultdict(list)
+            csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
+            bin_files = [f for f in os.listdir(directory) if f.endswith('.bin')]
+
+            # === CSV Merge ===
+            date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')
+            grouped_csv = defaultdict(list)
 
             for f in csv_files:
                 match = date_pattern.search(f)
                 if match:
-                    date = match.group(0)
-                    grouped_files[date].append(f)
+                    grouped_csv[match.group(0)].append(f)
 
             merged_files = []
-            for date, files in grouped_files.items():
+            for date, files in grouped_csv.items():
                 dataframes = [pd.read_csv(os.path.join(directory, f)) for f in files]
                 merged_df = pd.concat(dataframes, axis=1)
-
                 merged_file_name = f"{date}_merged.csv"
                 output_file = os.path.join(directory, merged_file_name)
                 merged_df.to_csv(output_file, index=False)
                 merged_files.append(output_file)
 
+            # === BIN Merge ===
+            date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')  # Same pattern as for CSV files
+            grouped_bin = defaultdict(list)
+
+            # Group .bin files by their date pattern
+            for f in bin_files:
+                match = date_pattern.search(f)
+                if match:
+                    grouped_bin[match.group(0)].append(f)
+
+            # Merge .bin files for each group
+            for date, files in grouped_bin.items():
+                merged_bin_file = os.path.join(directory, f"{date}_merged.bin")
+                print(f"Merging BIN files for date {date}: {files} -> {merged_bin_file}")
+
+                try:
+                    with open(merged_bin_file, 'wb') as outfile:
+                        for fname in files:
+                            file_path = os.path.join(directory, fname)
+                            with open(file_path, 'rb') as infile:
+                                shutil.copyfileobj(infile, outfile)
+                    print(f"Successfully merged BIN files into {merged_bin_file}")
+                except Exception as e:
+                    print(f"Error merging BIN files for date {date}: {str(e)}")
+            # === Archiving Original Files (only unmerged ones)
             if not os.path.exists(archive_path):
                 os.makedirs(archive_path)
 
-            # Move only individual files to the archive, exclude merged files
-            start_time = time.time()
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = [
                     executor.submit(shutil.move, os.path.join(directory, f), os.path.join(archive_path, f))
-                    for f in csv_files
-                    if f not in merged_files  # Exclude merged files
+                    for f in csv_files + bin_files
+                    if not any(merged in f for merged in merged_files)
                 ]
                 concurrent.futures.wait(futures)
-            end_time = time.time()
-            print(f"Time taken to move files: {end_time - start_time} seconds")
 
             return merged_files
         else:
-            print("Moving CSV files only")
+            print("Moving files only (no merge).")
+
+    # def merge_csv_files(self, isMerge, isLocal, directory, archive_path, drive_paths=None):
+    #     if isLocal:
+    #         all_csv_files = []
+    #         drive_paths = drive_paths
+
+    #         for drive_path in drive_paths:
+    #             if not os.path.exists(drive_path):
+    #                 # Throw error
+    #                 self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
+    #                 return
+
+    #             all_csv_files += [
+    #                 os.path.join(drive_path, f)
+    #                 for f in os.listdir(drive_path)
+    #                 if f.endswith('.csv')
+    #             ]
+
+    #         start_time = time.time()
+    #         with concurrent.futures.ThreadPoolExecutor() as executor:
+    #             futures = [executor.submit(shutil.move, csv_path, directory) for csv_path in all_csv_files]
+    #             concurrent.futures.wait(futures)
+    #         end_time = time.time()
+    #         print(f"Time taken to move files: {end_time - start_time} seconds")
+
+    #     if isMerge:
+    #         print("Merging CSV files")
+    #         csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
+
+    #         date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')  # Assuming date format is YYYY_MM_DD_HH_MM_SS
+    #         grouped_files = defaultdict(list)
+
+    #         for f in csv_files:
+    #             match = date_pattern.search(f)
+    #             if match:
+    #                 date = match.group(0)
+    #                 grouped_files[date].append(f)
+
+    #         merged_files = []
+    #         for date, files in grouped_files.items():
+    #             dataframes = [pd.read_csv(os.path.join(directory, f)) for f in files]
+    #             merged_df = pd.concat(dataframes, axis=1)
+
+    #             merged_file_name = f"{date}_merged.csv"
+    #             output_file = os.path.join(directory, merged_file_name)
+    #             merged_df.to_csv(output_file, index=False)
+    #             merged_files.append(output_file)
+
+    #         if not os.path.exists(archive_path):
+    #             os.makedirs(archive_path)
+
+    #         # Move only individual files to the archive, exclude merged files
+    #         start_time = time.time()
+    #         with concurrent.futures.ThreadPoolExecutor() as executor:
+    #             futures = [
+    #                 executor.submit(shutil.move, os.path.join(directory, f), os.path.join(archive_path, f))
+    #                 for f in csv_files
+    #                 if f not in merged_files  # Exclude merged files
+    #             ]
+    #             concurrent.futures.wait(futures)
+    #         end_time = time.time()
+    #         print(f"Time taken to move files: {end_time - start_time} seconds")
+
+    #         return merged_files
+    #     else:
+    #         print("Moving CSV files only")

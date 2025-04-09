@@ -353,9 +353,12 @@ class InputBoxes(ctk.CTkFrame):
             try:
                 loops = float(self.inputs["Loops"].get())
                 buffer = float(self.inputs["Buffer size"].get())
+                delay_ms = float(self.inputs["Delay"].get())
                 sampling_input = self.inputs["Decimation"].get()
                 sampling_rate = getSampling(sampling_input)
-                total_time = max(0, (buffer * loops) / sampling_rate) if sampling_rate > 0 else 0
+                # C code has usleep(expected_time + delay), add optional overhead (0.001s)
+                total_time = loops * ((buffer / sampling_rate) + (delay_ms / 1000.0) + 0.01)
+                total_time = max(0, total_time)
                 self.inputs["Time"].delete(0, "end")
                 self.inputs["Time"].insert(0, f"{total_time:.3f}")
             except:
@@ -374,16 +377,18 @@ class InputBoxes(ctk.CTkFrame):
 
             elif ip == "Time":
                 var = StringVar(value=default_values.get(ip, "0"))
-                var.trace_add("write", lambda *args: getLoopsCount())
                 entry_time = ctk.CTkEntry(self, textvariable=var)
+                entry_time.bind("<FocusOut>", lambda e: getLoopsCount())  # only when user finishes typing
                 self.inputs[ip] = entry_time
                 entry_time.grid(row=i + 1, column=1, padx=10, pady=5, sticky="e")
 
             else:
                 var = StringVar(value=default_values.get(ip, "0"))
                 entry = ctk.CTkEntry(self, textvariable=var)
-                if ip in ["Buffer size", "Loops"]:
+                if ip == "Buffer size":
                     entry.bind("<KeyRelease>", lambda e: getTime())
+                elif ip == "Loops":
+                    entry.bind("<FocusOut>", lambda e: getTime())
                 self.inputs[ip] = entry
                 entry.grid(row=i + 1, column=1, padx=10, pady=5, sticky="e")
 

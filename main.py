@@ -140,7 +140,7 @@ class App(ctk.CTk):
         for connection in self.connections:
             remote_files = connection.list_files(ENV_REMOTEPATH)
             #print(f"Remote files for {connection.ip}: {remote_files}")  # Debugging statement
-            csv_files = [file for file in remote_files if file.endswith('.csv')]
+            csv_files = [file for file in remote_files if file.endswith('.csv') or file.endswith('.bin')]
             print(f"CSV files for {connection.ip}: {csv_files}")  # Debugging statement
             if len(csv_files) != 0:
                 self.transfer_button.configure(state="normal")
@@ -240,34 +240,6 @@ class App(ctk.CTk):
         self.after(1000,self.status_line.update_status("Merging completed"))
         self.show_main_view()
 
-    # def run_acquisition(self, connection, command): #running acquisition on pitaya
-    #     self.acquire_button.configure(state="normal")
-    #     try:
-    #         params = self.inputboxes_frame.get()
-    #         print(f"Parameters received: {params}")  # Debugging statement
-    #         # Check if all required parameters are present
-    #         required_params = ["Decimation", "Buffer size", "Delay", "Loops"]
-    #         for param in required_params:
-    #             if param not in params:
-    #                 raise KeyError(f"Missing parameter: {param}")
-    #         param_str = ' '.join([str(params[param]) for param in required_params])
-    #         #isLocal_str = str(self.get_IsLocal())
-    #         isLocal_str = str(self.get_Switch_bool(self.isLocal))
-    #         full_command = f"{command} {param_str} {isLocal_str}"
-    #         print(f"Executing command: {full_command}")  # Debugging statement
-    #         stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
-    #         connection.start_listener() #starting listener for stdout and stderr
-    #     except Exception as e:
-    #         e_msg = f"{connection}: {str(e)}" #if error occurred show error message
-    #         print(e_msg)
-    #         self.error_queue.put(e_msg)
-    #     finally:
-    #         self.progress_window.close() 
-    #         self.status_line.stop_timer() #closing progress window at the end of acquisition process
-    #     self.check_transfer_button() #check if csv data to transfer is available
-    #     connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
-    #     self.after(1000,self.status_line.update_status("Merging completed"))
-    #     #connection.merge_csv_files(True,ENV_REMOTEPATH, ENV_ARCHIVE_DIR,['Y:/','Z:/']) #merging csv files after acquisition
 
     def stop_acquisition(self): #stopping acquisition on pitaya
         for connection in self.connections:
