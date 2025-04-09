@@ -92,7 +92,7 @@ class ConnectionManager:
         finally:
             sftp.close()
 
-    def transfer_all_csv_files(self, remote_directory, local_directory,isMerge): #transfering data files from pitaya to local machine
+    def transfer_all_csv_files(self, remote_directory, local_directory, isMerge, progress_callback=None): #transfering data files from pitaya to local machine
 
         if not os.path.exists(local_directory): #making sure local directory exists, not doing it atm for remote directory might add in future
             print(f"Local directory {local_directory} does not exist.")
