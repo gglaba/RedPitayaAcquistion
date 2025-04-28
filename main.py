@@ -36,7 +36,7 @@ pitaya_dict = {
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.command = "cd /root/RedPitaya/G && ./send_acquire" #command used to launch acquisition software on pitaya
+        self.command = "cd /root/RedPitaya/G && ./test2" #command used to launch acquisition software on pitaya
         self.connections = [] #list of connected pitayas
         self.error_queue = queue.Queue() #queue for error messages
         self.selected_ips = [] #currently selected pitayas from checkboxes
