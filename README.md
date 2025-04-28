@@ -1,2 +1,4 @@
 # SignalAcquisitionGUI
-Simple GUI made with tkinter &amp; customtkinter to automate my engineering thesis.
+Niżej link do schematu w draw.io
+
+https://drive.google.com/file/d/1JA4RCNCXqLU1NJxNizfWzJ67FfDGHGli/view?usp=sharing
