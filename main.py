@@ -105,7 +105,6 @@ class App(ctk.CTk):
         self.check_new_checked_boxes() #constantly checking for new checked boxes
         self.check_transfer_button() #if remote has csv files then enable transfer button
         self.bind("<Return>", lambda event:self.initiate_acquisition())
-        self.acquire_button.configure(state="normal")
 
     def show_acquisition_view(self): #showing acquisition view
         self.connect_button.grid_remove()
