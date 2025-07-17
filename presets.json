@@ -1,0 +1,9 @@
+{
+  "a": {
+    "Decimation": "1024",
+    "Buffer size": 16384,
+    "Delay": 0,
+    "Loops": 64,
+    "Time": 9.229935
+  }
+}

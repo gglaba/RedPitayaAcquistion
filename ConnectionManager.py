@@ -1,17 +1,17 @@
-from collections import defaultdict
 import paramiko
 import os
-import fnmatch
 from paramiko import SSHClient, AutoAddPolicy
 import threading
-import subprocess
 from scp import SCPClient
 import select
 import pandas as pd
 import shutil
-import concurrent.futures
-import time
 import re
+import numpy as np
+from pathlib import Path
+import time
+from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 #class for managing connection - basically trying to keep backend separate
 
 class ConnectionManager:
@@ -132,89 +132,104 @@ class ConnectionManager:
                     print(f"Failed to transfer {file}. Error: {str(e)}")
                     self.app.error_queue.put(f"{self.ip}: Failed to transfer {file}. Error: {str(e)}") #for any other error - messagebox
 
-    def merge_csv_files(self, isMerge, isLocal, directory, archive_path, drive_paths=None):
-        if isLocal:
-            all_data_files = []
-            for drive_path in drive_paths:
-                if not os.path.exists(drive_path):
-                    self.app.error_queue.put(f"Drive path {drive_path} does not exist.")
-                    return
 
-                all_data_files += [
-                    os.path.join(drive_path, f)
-                    for f in os.listdir(drive_path)
-                    if f.endswith('.csv') or f.endswith('.bin')
-                ]
+    def merge_csv_files(self, merge_enabled, local_mode, target_dir, archive_dir, drive_list=None):
+        # BIN files merging logic
+        BIN_SUFFIX = ".bin"
+        TIMESTAMP_PATTERN = re.compile(r"\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}")
+        CHANNEL_PATTERN = re.compile(r"CH(\d+)", re.IGNORECASE)
+        THREADS = 8
 
-            # Move files in parallel
-            start_time = time.time()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = [executor.submit(shutil.move, f, directory) for f in all_data_files]
-                concurrent.futures.wait(futures)
-            end_time = time.time()
-            print(f"Time taken to move files: {end_time - start_time:.2f} seconds")
+        if local_mode and drive_list:
+            target_path = Path(target_dir)
+            target_path.mkdir(parents=True, exist_ok=True)
 
-        if isMerge:
-            print("Merging CSV and BIN files")
+            normalized_drives = [d if len(d) > 2 else d + "\\" for d in drive_list]
+            bin_files: list[Path] = []
 
-            csv_files = [f for f in os.listdir(directory) if f.endswith('.csv')]
-            bin_files = [f for f in os.listdir(directory) if f.endswith('.bin')]
+            for drive in normalized_drives:
+                drive_root = Path(drive)
+                if not drive_root.exists():
+                    error_msg = f"Drive path {drive_root} does not exist."
+                    print("ERR:", error_msg)
+                    self.app.error_queue.put(error_msg)
+                    continue
+                found_bins = [f for f in drive_root.rglob("*")
+                              if f.suffix.lower() == BIN_SUFFIX and f.is_file()]
+                bin_files.extend(found_bins)
 
-            # === CSV Merge ===
-            date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')
-            grouped_csv = defaultdict(list)
+            if bin_files:
+                def move_file(src: Path):
+                    dest = target_path / src.name
+                    if dest.exists():
+                        base, ext = dest.stem, dest.suffix
+                        idx = 1
+                        while (candidate := dest.parent / f"{base}_{idx}{ext}").exists():
+                            idx += 1
+                        dest = candidate
+                    try:
+                        shutil.move(src, dest)
+                    except Exception as exc:
+                        move_err = f"Move failed {src} -> {dest}: {exc}"
+                        print("ERR:", move_err)
+                        self.app.error_queue.put(move_err)
 
-            for f in csv_files:
-                match = date_pattern.search(f)
-                if match:
-                    grouped_csv[match.group(0)].append(f)
+                with ThreadPoolExecutor(THREADS) as executor:
+                    executor.map(move_file, bin_files)
+            else:
+                print("No BIN files to move.")
 
-            merged_files = []
-            for date, files in grouped_csv.items():
-                dataframes = [pd.read_csv(os.path.join(directory, f)) for f in files]
-                merged_df = pd.concat(dataframes, axis=1)
-                merged_file_name = f"{date}_merged.csv"
-                output_file = os.path.join(directory, merged_file_name)
-                merged_df.to_csv(output_file, index=False)
-                merged_files.append(output_file)
+        if not merge_enabled:
+            return None
 
-            # === BIN Merge ===
-            date_pattern = re.compile(r'\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}')  # Same pattern as for CSV files
-            grouped_bin = defaultdict(list)
+        print("Merging BIN files")
+        target_path = Path(target_dir)
+        bin_candidates = [p for p in target_path.iterdir() if p.suffix.lower() == BIN_SUFFIX]
+        if not bin_candidates:
+            print("No BIN files found in working directory.")
+            return None
 
-            # Group .bin files by their date pattern
-            for f in bin_files:
-                match = date_pattern.search(f)
-                if match:
-                    grouped_bin[match.group(0)].append(f)
+        # Group by timestamp
+        grouped_bins: dict[str, list[Path]] = defaultdict(list)
+        for bin_file in bin_candidates:
+            ts_match = TIMESTAMP_PATTERN.search(bin_file.name)
+            if ts_match:
+                grouped_bins[ts_match.group(0)].append(bin_file)
+            else:
+                no_ts_msg = f"BIN without timestamp: {bin_file.name}"
+                print("ERR:", no_ts_msg)
+                self.app.error_queue.put(no_ts_msg)
 
-            # Merge .bin files for each group
-            for date, files in grouped_bin.items():
-                merged_bin_file = os.path.join(directory, f"{date}_merged.bin")
-                print(f"Merging BIN files for date {date}: {files} -> {merged_bin_file}")
+        merged_outputs: list[Path] = []
 
-                try:
-                    with open(merged_bin_file, 'wb') as outfile:
-                        for fname in files:
-                            file_path = os.path.join(directory, fname)
-                            with open(file_path, 'rb') as infile:
-                                shutil.copyfileobj(infile, outfile)
-                    print(f"Successfully merged BIN files into {merged_bin_file}")
-                except Exception as e:
-                    print(f"Error merging BIN files for date {date}: {str(e)}")
-            # === Archiving Original Files (only unmerged ones)
-            if not os.path.exists(archive_path):
-                os.makedirs(archive_path)
+        for timestamp, files in grouped_bins.items():
+            try:
+                files.sort(key=lambda f: int(CHANNEL_PATTERN.search(f.name).group(1)))
 
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = [
-                    executor.submit(shutil.move, os.path.join(directory, f), os.path.join(archive_path, f))
-                    for f in csv_files + bin_files
-                    if not any(merged in f for merged in merged_files)
-                ]
-                concurrent.futures.wait(futures)
+                memmaps = [np.memmap(f, dtype=np.float32, mode="r") for f in files]
+                sizes = [m.size for m in memmaps]
+                min_size = min(sizes)
+                truncated = [m[:min_size] for m in memmaps]
+                samples_per_channel = min_size // 2
+                device_count = len(truncated)
+                total_channels = device_count * 2
 
-            return merged_files
-        else:
-            print("Moving files only (no merge).")
+                merged_data = np.empty(samples_per_channel * total_channels, dtype=np.float32)
+                for dev_idx, mm in enumerate(truncated):
+                    merged_data[dev_idx*2   :: total_channels] = mm[0::2]
+                    merged_data[dev_idx*2+1 :: total_channels] = mm[1::2]
 
+                merged_filename = f"{timestamp}_{total_channels}ch.bin"
+                merged_filepath = target_path / merged_filename
+                merged_data.tofile(merged_filepath)
+                merged_outputs.append(merged_filepath)
+                archive_path = Path(archive_dir)
+                archive_path.mkdir(parents=True, exist_ok=True)
+                with ThreadPoolExecutor(THREADS) as executor:
+                    executor.map(lambda f: shutil.move(f, archive_path / f.name), files)
+
+            except Exception as exc:
+                merge_err = f"[{timestamp}] merge failed: {exc}"
+                print("ERR:", merge_err)
+                self.app.error_queue.put(merge_err)
+        return

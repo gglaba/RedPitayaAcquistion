@@ -46,7 +46,7 @@ class CheckBoxes(ctk.CTkFrame):
         return selected_ips 
 
     def update_label(self, ip, status): #method for updating status label, if connected then green, if disconnected then red
-        for i, checkbox in enumerate(self.checkboxes):#
+        for i, checkbox in enumerate(self.checkboxes):
             if checkbox.cget("text") == ip:
                 self.labels[i].configure(text=status)
                 if status == "Connected":

@@ -11,6 +11,9 @@ from ProgressWindow import ProgressWindow
 from CheckBoxes import CheckBoxes
 from InputBoxes import InputBoxes
 from StatusLine import StatusLine
+from PresetManager import PresetManager
+from merge_files import merge_bin_files
+import json
 
 ctk.set_appearance_mode("dark")
 load_dotenv()
@@ -44,15 +47,13 @@ class App(ctk.CTk):
             os.makedirs("Data")
         
         self.status_line = StatusLine(self)
+        self.presets = PresetManager()
         
         self.title("RedPitaya Signal Acquisition")
-        self.geometry("600x500")
+        self.geometry("700x650")
+        self.resizable(False,False) #disabling resizing of the window
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.resizable(False, False) #disabling resizing of the window
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(1, weight=2)
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -62,31 +63,72 @@ class App(ctk.CTk):
         self.grid_rowconfigure(6, weight=0)
         self.grid_rowconfigure(7, weight=0)
 
-        self.status_line.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        self.status_line.grid(row=8, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         self.checkboxes_frame = CheckBoxes(self, "Devices", ips=[ENV_MASTERRP, ENV_SLAVE1, ENV_SLAVE2]) #creating checkbox for each device (using checkboxes class)
-        self.checkboxes_frame.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="nsew")
+        self.checkboxes_frame.grid(row=0, column=0,rowspan = 3, padx=10, pady=(10, 0), sticky="nsew")
 
         self.connect_button = ctk.CTkButton(self, text="Connect to Pitayas", command=self.start_connect_to_devices_thread) #creating connect button
         self.connect_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10)
 
+        self.preset_controls_frame = ctk.CTkFrame(self)
+        self.preset_controls_frame.grid(row=0, column=1, padx=10, pady=(10, 0), sticky="new")
+        self.preset_controls_frame.grid_columnconfigure(0, weight=1)
+        self.preset_controls_frame.grid_columnconfigure(1, weight=0)
+        self.preset_controls_frame.grid_columnconfigure(2, weight=1)
+        self.preset_controls_frame.grid_columnconfigure(3, weight=0)
+        self.preset_controls_frame.grid_columnconfigure(4, weight=1)
+
+        preset_names = self.presets.names()
+        preset_names.append("Create New Preset...")
+        self.presets_box = ctk.CTkComboBox(
+            master=self.preset_controls_frame,
+            width=160,
+            state="readonly",
+            values=preset_names,
+            command=lambda _: self._load_selected_preset()
+        )
+        self.presets_box.set("Select Preset")
+        self.presets_box.grid(row=0, column=0, padx=(0, 5), pady=0, sticky="ew")
+
+        self.save_preset_btn = ctk.CTkButton(
+            master=self.preset_controls_frame,
+            text="Save Preset",
+            width=60,
+            command=self.__save_current_preset
+        )
+        self.save_preset_btn.grid(row=0, column=2, padx=(0, 5), pady=0, sticky="ew")
+
+        self.delete_preset_btn = ctk.CTkButton(
+            master=self.preset_controls_frame,
+            text="Delete Preset",
+            width=60,
+            command=self.__delete_current_preset
+        )
+        self.delete_preset_btn.grid(row=0, column=4, padx=10, pady=0, sticky="ew")
+
+        # --- PARAMETERS (InputBoxes) ---
         self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops','Time'], status_line=self.status_line)
-        self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 0), sticky="nsew")
+        self.inputboxes_frame.grid(row=1, column=1, padx=10, pady=(10, 0), sticky="nsew")
 
         self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.initiate_acquisition) #creating acquire button
-        self.acquire_button.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+        self.acquire_button.grid(row=4, column=0, columnspan=2, padx=20, pady=20)
         self.acquire_button.configure(state="disabled")
 
         self.transfer_button = ctk.CTkButton(self, text="Transfer Data", command=self.transfer_files) #creating transfer button
-        self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=10)
+        self.transfer_button.grid(row=5, column=0, padx=20,columnspan=2, pady=20)
         self.transfer_button.configure(state="disabled")
 
-        self.stop_button = ctk.CTkButton(self, text="STOP", command=self.stop_acquisition) #creating stop button
-        self.stop_button.grid(row=2, column=0,columnspan=2, padx=10, pady=10,sticky="new")
+        self.merge_files_button = ctk.CTkButton(self,text = "Merge Files", command=self.on_merge_button_click)
+        self.merge_files_button.grid(row=6, column=0, padx=20, pady=20,columnspan=2)
+        self.merge_files_button.configure(state="disabled")
+
+        self.stop_button = ctk.CTkButton(self, text="STOP", command=self.stop_acquisition,fg_color = '#cc7000',hover_color='#cc8900') #creating stop button
+        self.stop_button.grid(row=2, column=1,columnspan=2, padx=10, pady=10,sticky="nsew")
         self.stop_button.grid_remove()
 
-        self.abort_button = ctk.CTkButton(self, text="ABORT", command=self.abort_acquisition) #creating abort button
-        self.abort_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10,sticky="nsew")
+        self.abort_button = ctk.CTkButton(self, text="ABORT", command=self.abort_acquisition,fg_color = '#cc0000',hover_color='#cc1111') #creating abort button
+        self.abort_button.grid(row=3, column=1,columnspan=2, padx=10, pady=10,sticky="nsew")
         self.abort_button.grid_remove()
 
         self.isLocal = ctk.StringVar(value=0)
@@ -96,15 +138,66 @@ class App(ctk.CTk):
         self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
         self.isMerge = ctk.StringVar(value=0)
-        #self.switch_merge_frame = ctk.CTkFrame(self)
-        #self.switch_merge_frame.grid(row=5, column=0, padx=10, pady=10, sticky="w")
         self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Merge CSV Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
         self.switch_merge.grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        self.switch_merge.grid_remove()
+
+        self.isLoops = ctk.StringVar(value=0)
+        self.switch_loops = ctk.CTkSwitch(self.switch_local_frame, text="Loops parameter",command = lambda:self.loops_switch_toggled(), variable=self.isLoops, onvalue=1, offvalue=0)
+        self.switch_loops.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        self.switch_loops.grid_remove()
 
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
         self.check_transfer_button() #if remote has csv files then enable transfer button
+        self.check_files_to_merge()
         self.bind("<Return>", lambda event:self.initiate_acquisition())
+        #self.acquire_button.configure(state="normal")
+
+
+
+    def on_preset_selected(self, _value: str):
+        name = self.presets_box.get()
+        presets = presets.load_all()
+        if name in presets:
+            self.inputboxes_frame.set(presets[name])
+
+    def save_preset(self):
+        name = ctk.CTkInputDialog(text="Nazwa presetu").get_input()
+        if not name: return
+        self.presets.save_preset(name, self.inputboxes_frame.get())
+        self.presets_box.configure(values=list(self.presets.load_all().keys()))
+        self.status_line.update_status(f"Preset '{name}' zapisany")
+
+    def delete_preset(self):
+        name = self.presets_box.get()
+        self.presets.delete_preset(name)
+        self.presets_box.configure(values=list(self.presets.load_all().keys()))
+        self.presets_box.set("")
+
+    def get_Switch_bool(self, switch_var):
+        bool_value = switch_var.get()
+        bool_value = bool(int(bool_value))
+        print(f"{switch_var}: {bool_value}")
+
+        # Check if the switch_loops is toggled
+        if switch_var == self.isLoops:
+            if bool_value:  # If Loops switch is ON
+                self.inputboxes_frame.hide_input("Loops")
+            else:  # If Loops switch is OFF
+                self.inputboxes_frame.show_input("Loops")
+
+        return bool_value
+    
+    def loops_switch_toggled(self):
+        bool_value = self.isLoops.get()
+        bool_value = bool(int(bool_value))
+        print(f"Loops switch toggled: {bool_value}")
+        # Check if the switch_loops is toggled
+        if bool_value:
+            self.inputboxes_frame.hide_input("Loops")
+        else:
+            self.inputboxes_frame.show_input("Loops")
 
     def show_acquisition_view(self): #showing acquisition view
         self.connect_button.grid_remove()
@@ -112,6 +205,7 @@ class App(ctk.CTk):
         self.transfer_button.grid_remove()
         self.switch_local_frame.grid_remove()
         self.switch_merge.grid_remove()
+        self.merge_files_button.grid_remove()
         self.stop_button.grid()
         self.abort_button.grid()
 
@@ -123,6 +217,7 @@ class App(ctk.CTk):
         self.transfer_button.grid()
         self.switch_local_frame.grid()
         self.switch_merge.grid()
+        self.merge_files_button.grid()
     
     def check_new_checked_boxes(self): #checking if new checkboxes are checked, if so and not connected already enable connect button
         selected_ips = self.checkboxes_frame.get()
@@ -138,13 +233,19 @@ class App(ctk.CTk):
     def check_transfer_button(self):
         for connection in self.connections:
             remote_files = connection.list_files(ENV_REMOTEPATH)
-            #print(f"Remote files for {connection.ip}: {remote_files}")  # Debugging statement
             csv_files = [file for file in remote_files if file.endswith('.csv') or file.endswith('.bin')]
-            print(f"CSV files for {connection.ip}: {csv_files}")  # Debugging statement
             if len(csv_files) != 0:
                 self.transfer_button.configure(state="normal")
             else:
                 self.transfer_button.configure(state="disabled")
+
+    def check_files_to_merge(self):
+        data_files = [file for file in os.listdir(ENV_LOCALPATH) if file.endswith('.csv') or file.endswith('.bin')]
+        if len(data_files) != 0:
+            self.merge_files_button.configure(state="normal")
+        else:
+            self.merge_files_button.configure(state="disabled")
+        self.after(1000, self.check_files_to_merge)
     
 
     def check_errors(self):
@@ -275,6 +376,72 @@ class App(ctk.CTk):
         for connection in self.connections:
             connection.disconnect()
         super().destroy()
+
+    def _load_selected_preset(self):
+        name = self.presets_box.get()
+        if name == "Create New Preset...":
+            from tkinter.simpledialog import askstring
+            new_name = askstring("Create Preset", "Enter new preset name:")
+            if new_name:
+                self.presets.save(new_name, self.inputboxes_frame.get())
+                preset_names = self.presets.names()
+                preset_names.append("Create New Preset...")
+                self.presets_box.configure(values=preset_names)
+                self.presets_box.set(new_name)
+                self.status_line.update_status(f"Preset '{new_name}' created")
+        elif name and name != "Select Preset":
+            params = self.presets.load(name)
+            if params:
+                self.inputboxes_frame.set(params)
+                self.status_line.update_status(f"Preset '{name}' loaded")
+            else:
+                self.status_line.update_status(f"Preset '{name}' not found")
+
+    def __save_current_preset(self):
+        name = self.presets_box.get()
+        if not name or name in ["Select Preset", "Create New Preset..."]:
+            self.status_line.update_status("Select a preset to overwrite or use 'Create New Preset...'")
+            return
+        self.presets.save(name, self.inputboxes_frame.get())
+        self.status_line.update_status(f"Preset '{name}' updated")
+
+    def __delete_current_preset(self):
+        name = self.presets_box.get()
+        if not name or name == "Select Preset":
+            self.status_line.update_status("No preset selected to delete")
+            return
+        if name in self.presets.names():
+            del self.presets.data[name]
+            self.presets.path.write_text(json.dumps(self.presets.data, indent=2))
+            preset_names = self.presets.names()
+            preset_names.append("Create New Preset...")
+            self.presets_box.configure(values=preset_names)
+            self.presets_box.set("Select Preset")
+            self.status_line.update_status(f"Preset '{name}' deleted")
+        else:
+            self.status_line.update_status(f"Preset '{name}' not found")
+
+    def on_merge_button_click(self):
+        try:
+            for file in os.listdir(ENV_LOCALPATH):
+                if file.endswith('.bin'):
+                    try:
+                        with open(os.path.join(ENV_LOCALPATH, file), 'rb') as f:
+                            pass
+                    except PermissionError:
+                        self.status_line.update_status(f"Cannot access {file} - file is in use")
+                        return
+            
+            merge_bin_files()
+            self.status_line.update_status("Files merged successfully")
+            
+            self.merge_files_button.configure(state="disabled")
+            
+        except PermissionError as pe:
+            self.status_line.update_status("Error accessing files")
+        except Exception as e:
+            self.status_line.update_status(f"Error merging files: {str(e)}")
+            print(f"Error: {e}")  # For debugging
 
 
 if __name__ == "__main__":

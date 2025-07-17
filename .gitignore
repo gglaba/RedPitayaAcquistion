@@ -6,3 +6,7 @@ debug.log
 /Archive
 /__pycache__
 /tests/__pycache__
+/dist
+/build
+/Output
+/Merged
