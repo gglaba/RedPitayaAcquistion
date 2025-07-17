@@ -166,21 +166,26 @@ class InputBoxes(ctk.CTkFrame):
         if lbl in ("Time", "Loops"):
             self.calculation_mode.set(lbl)
 
+
     def _set_var(self, lbl: str, value: str) -> None:
         self._updating = True
         self.vars[lbl].set(value)
         self._updating = False
 
+
     def hide_input(self, label: str) -> None:
         if label in self.inputs:
             self.inputs[label].grid_remove()
+
 
     def show_input(self, label: str) -> None:
         if label in self.inputs:
             self.inputs[label].grid()
 
+
     def get(self) -> Dict[str, float | int | str]:
         out: Dict[str, float | int | str] = {}
+
         for lbl, widget in self.inputs.items():
             if lbl == "Decimation":
                 key = widget.get()
@@ -188,43 +193,59 @@ class InputBoxes(ctk.CTkFrame):
             else:
                 raw = widget.get()
                 out[lbl] = float(raw) if lbl == "Time" else int(raw or 0)
+
         return out
+
 
     def set(self, params: Dict[str, Any]) -> None:
         rev_dec = {v: k for k, v in self.decimation_options.items()}
+
         for lbl, widget in self.inputs.items():
             if lbl not in params:
                 continue
 
             if lbl == "Decimation":
-                key = rev_dec.get(str(params[lbl]),
-                                  list(self.decimation_options.keys())[0])
+                key = rev_dec.get(
+                    str(params[lbl]),
+                    list(self.decimation_options.keys())[0]
+                )
                 widget.set(key)
             else:
                 self._set_var(lbl, str(params[lbl]))
 
+
     def recalculate(self) -> None:
         try:
-            p = self.get()
-            sr = _sampling_rate(self.vars["Decimation"].get(),
-                                self.decimation_options)
+            params = self.get()
+            sample_rate = _sampling_rate(
+                self.vars["Decimation"].get(),
+                self.decimation_options
+            )
 
             if self.calculation_mode.get() == "Time":
-                loops = loops_from_time(p["Time"], p["Buffer size"],
-                                        sr, p["Delay"])
+                loops = loops_from_time(
+                    params["Time"],
+                    params["Buffer size"],
+                    sample_rate,
+                    params["Delay"]
+                )
                 self._set_var("Loops", str(loops))
-                msg = "Loops recalculated from Time"
+                message = "Calculated number of loops based on time input."
             else:
-                t = time_from_loops(p["Loops"], p["Buffer size"],
-                                    sr, p["Delay"])
-                self._set_var("Time", f"{t:.6f}")
-                msg = "Time recalculated from Loops"
+                duration = time_from_loops(
+                    params["Loops"],
+                    params["Buffer size"],
+                    sample_rate,
+                    params["Delay"]
+                )
+                self._set_var("Time", f"{duration:.6f}")
+                message = "Calculated time based on loop count."
 
             if self.status_line:
-                self.status_line.update_status(msg)
+                self.status_line.update_status(message)
 
-        except Exception as exc:
+        except Exception as error:
             if self.status_line:
-                self.status_line.update_status(f"Recalc error: {exc}")
+                self.status_line.update_status(f"Error during recalculation: {error}")
             else:
                 raise

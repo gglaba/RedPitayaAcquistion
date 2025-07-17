@@ -118,16 +118,7 @@ class ConnectionManager:
                 try:
                     scp.get(remote_path, local_path) #transfering file
                     print(f"Successfully transferred {file}.")
-                    remote_file_size = self.client.exec_command(f"wc -c < {remote_path}")[1].read().decode('utf-8').strip() #getting file size of remote file
-                    local_file_size = os.path.getsize(local_path) #getting file size of local file
-                    size_difference = abs(int(remote_file_size) - local_file_size) #making sure file sizes match before deleting remote file
-                    if size_difference <= 10240:  # Allow a difference of up to 10KB - dont know how much linux - windows file size difference might be
-                        # Delete the file on the remote server
-                        self.client.exec_command(f"rm {remote_path}")
-                        print(f"Successfully deleted {file} on the remote server.")
-                    else:
-                        print(f"File sizes do not match for {file}. Not deleting the remote file.")
-                        self.app.error_queue.put(f"{self.ip}: File sizes do not match for {file}. Not deleting the remote file.") #if file sizes dont match, messagebox appears
+                    self.client.exec_command(f"rm {remote_path}")
                 except Exception as e:
                     print(f"Failed to transfer {file}. Error: {str(e)}")
                     self.app.error_queue.put(f"{self.ip}: Failed to transfer {file}. Error: {str(e)}") #for any other error - messagebox
