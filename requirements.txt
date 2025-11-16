@@ -1,0 +1,6 @@
+customtkinter
+paramiko
+scp
+pandas
+numpy
+python-dotenv
