@@ -3,6 +3,8 @@ import tkinter
 import customtkinter as ctk
 import os
 import threading
+import subprocess
+from pathlib import Path
 import queue
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
@@ -14,6 +16,8 @@ from StatusLine import StatusLine
 from PresetManager import PresetManager
 from merge_files import merge_bin_files
 import json
+import os
+import threading
 
 ctk.set_appearance_mode("dark")
 load_dotenv()
@@ -43,6 +47,10 @@ class App(ctk.CTk):
         self.connections = [] #list of connected pitayas
         self.error_queue = queue.Queue() #queue for error messages
         self.selected_ips = [] #currently selected pitayas from checkboxes
+        # Pipeline control to avoid double-starts when an external guard (PY_VAR6) is active
+        self.pipeline_lock = threading.Lock()
+        self.pipeline_running = False
+        self.pipeline_active_count = 0
         if not os.path.exists("Data"): #making sure Data folder exists on host
             os.makedirs("Data")
         
@@ -50,18 +58,19 @@ class App(ctk.CTk):
         self.presets = PresetManager()
         
         self.title("RedPitaya Signal Acquisition")
-        self.geometry("700x650")
-        self.resizable(False,False) #disabling resizing of the window
+        self.geometry("700x700")
+        self.resizable(True,True) #disabling resizing of the window
+        self.minsize(700, 650)
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
-        self.grid_rowconfigure(3, weight=0)
-        self.grid_rowconfigure(4, weight=0)
-        self.grid_rowconfigure(5, weight=0)
-        self.grid_rowconfigure(6, weight=0)
-        self.grid_rowconfigure(7, weight=0)
+        self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(4, weight=1)
+        self.grid_rowconfigure(5, weight=1)
+        self.grid_rowconfigure(6, weight=1)
+        self.grid_rowconfigure(7, weight=1)
 
         self.status_line.grid(row=8, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
@@ -121,7 +130,9 @@ class App(ctk.CTk):
 
         self.merge_files_button = ctk.CTkButton(self,text = "Merge Files", command=self.on_merge_button_click)
         self.merge_files_button.grid(row=6, column=0, padx=20, pady=20,columnspan=2)
-        self.merge_files_button.configure(state="disabled")
+        #self.merge_files_button.configure(state="disabled")
+
+        # Option: open merged file in Explorer after merge (moved into switches area below)
 
         self.stop_button = ctk.CTkButton(self, text="STOP", command=self.stop_acquisition,fg_color = '#cc7000',hover_color='#cc8900') #creating stop button
         self.stop_button.grid(row=2, column=1,columnspan=2, padx=10, pady=10,sticky="nsew")
@@ -138,7 +149,7 @@ class App(ctk.CTk):
         self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
         self.isMerge = ctk.StringVar(value=0)
-        self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Merge CSV Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
+        self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Merge BIN Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
         self.switch_merge.grid(row=1, column=0, padx=10, pady=10, sticky="w")
         self.switch_merge.grid_remove()
 
@@ -147,9 +158,14 @@ class App(ctk.CTk):
         self.switch_loops.grid(row=2, column=0, padx=10, pady=10, sticky="w")
         self.switch_loops.grid_remove()
 
+        # Open merged file switch (placed with other switches)
+        self.open_merged = ctk.StringVar(value=0)
+        self.switch_open_merged = ctk.CTkSwitch(self.switch_local_frame, text="Open acquisition folder after merge", command=lambda: self.get_Switch_bool(self.open_merged, "Open merged file"), variable=self.open_merged, onvalue=1, offvalue=0)
+        self.switch_open_merged.grid(row=3, column=0, padx=10, pady=2, sticky="w")
+
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
-        self.check_transfer_button() #if remote has csv files then enable transfer button
+        self.check_transfer_button() #if remote has BIN/CSV files then enable transfer button
         self.check_files_to_merge()
         self.bind("<Return>", lambda event:self.initiate_acquisition())
         #self.acquire_button.configure(state="normal")
@@ -175,19 +191,28 @@ class App(ctk.CTk):
         self.presets_box.configure(values=list(self.presets.load_all().keys()))
         self.presets_box.set("")
 
-    def get_Switch_bool(self, switch_var):
-        bool_value = switch_var.get()
-        bool_value = bool(int(bool_value))
-        print(f"{switch_var}: {bool_value}")
 
-        # Check if the switch_loops is toggled
-        if switch_var == self.isLoops:
-            if bool_value:  # If Loops switch is ON
+    def get_Switch_bool(self, switch_var, name: str = None):
+        bool_value = bool(int(switch_var.get()))
+        
+        if name is None:
+            if switch_var is self.isLocal:
+                name = "Local Acquisition"
+            elif switch_var is self.isMerge:
+                name = "Merge BIN Files"
+            elif switch_var is self.isLoops:
+                name = "Loops"
+            else:
+                name = "Switch"
+        print(f"{name}: {bool_value}")
+
+        if switch_var is self.isLoops:
+            if bool_value:
                 self.inputboxes_frame.hide_input("Loops")
-            else:  # If Loops switch is OFF
+            else:
                 self.inputboxes_frame.show_input("Loops")
-
         return bool_value
+
     
     def loops_switch_toggled(self):
         bool_value = self.isLoops.get()
@@ -257,17 +282,22 @@ class App(ctk.CTk):
             self.show_error(error_message) #if there is show error message using tkinter messagebox
         self.after(100, self.check_errors)
     
-    def get_Switch_bool(self,switch_var):
-        bool_value = switch_var.get()
-        bool_value = bool(int(bool_value))
-        print(f"{switch_var}:{bool_value}")
-        return bool_value
+    # def get_Switch_bool(self,switch_var):
+    #     bool_value = switch_var.get()
+    #     bool_value = bool(int(bool_value))
+    #     print(f"{switch_var}:{bool_value}")
+    #     return bool_value
 
 
     def show_error(self,error_text): #simple method to pop up tkinter messagebox with error message
         tkinter.messagebox.showerror("Error",error_text)
 
     def initiate_acquisition(self): #method to open progress window and start acquisition on pitaya
+        # Debounce: if external guard PY_VAR6 is set and a pipeline is already running, skip
+        if self.pipeline_running:
+           self.status_line.update_status("Pipeline already running")
+           return
+
         self.show_acquisition_view()
         self.progress_window = ProgressWindow(self)
         self.progress_window.focus_set()
@@ -307,6 +337,11 @@ class App(ctk.CTk):
         threading.Thread(target=self.start_acquisition, args=(self.command,), daemon=True).start() #starting acquisition in separate thread
 
     def start_acquisition(self, command):
+        # Mark pipeline as running and set active count
+        with self.pipeline_lock:
+            self.pipeline_running = True
+            self.pipeline_active_count = len(self.connections) if self.connections else 0
+
         self.status_line.start_timer()
         for connection in self.connections:
             threading.Thread(target=self.run_acquisition, args=(connection, command), daemon=True).start()
@@ -335,10 +370,18 @@ class App(ctk.CTk):
         finally:
             self.progress_window.close() 
             self.status_line.stop_timer() #closing progress window at the end of acquisition process
-        self.check_transfer_button() #check if csv data to transfer is available
+        self.check_transfer_button() #check if bin data to transfer is available
         connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
         self.after(1000,self.status_line.update_status("Merging completed"))
         self.show_main_view()
+        # Decrement active counter and clear running flag when done
+        with self.pipeline_lock:
+            try:
+                self.pipeline_active_count -= 1
+            except Exception:
+                self.pipeline_active_count = max(0, self.pipeline_active_count - 1)
+            if self.pipeline_active_count <= 0:
+                self.pipeline_running = False
 
 
     def stop_acquisition(self): #stopping acquisition on pitaya
@@ -434,7 +477,28 @@ class App(ctk.CTk):
             
             merge_bin_files()
             self.status_line.update_status("Files merged successfully")
-            
+
+            # Optionally open the most recently created merged BIN in file explorer
+            try:
+                if self.get_Switch_bool(self.open_merged, "Open merged file"):
+                    merged_dir = Path("Merged")
+                    if merged_dir.exists():
+                        bin_files = [p for p in merged_dir.glob("*.bin") if p.is_file()]
+                        if bin_files:
+                            latest = max(bin_files, key=lambda p: p.stat().st_mtime)
+                            # Use explorer to select the file on Windows
+                            try:
+                                subprocess.run(["explorer", "/select,", str(latest)])
+                            except Exception:
+                                # Fallback: open the folder
+                                subprocess.run(["explorer", str(merged_dir)])
+                        else:
+                            self.status_line.update_status("No merged BIN files found to open")
+                    else:
+                        self.status_line.update_status("Merged directory not found")
+            except Exception as e:
+                print(f"Failed to open merged file: {e}")
+
             self.merge_files_button.configure(state="disabled")
             
         except PermissionError as pe:

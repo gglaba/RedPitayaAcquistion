@@ -6,6 +6,9 @@ from collections import defaultdict
 import shutil
 import gc
 import time
+import uuid
+import json
+
 
 def merge_bin_files():
 
@@ -46,6 +49,11 @@ def merge_bin_files():
         try:
 
             ch_pattern = re.compile(r"CH(\d+)", re.IGNORECASE)
+            missing = [f for f in files if ch_pattern.search(f.name) is None]
+            if missing:
+                print(f"Skipping timestamp {timestamp}: for files: {[m.name for m in missing]}")
+                continue
+
             files.sort(key=lambda f: int(ch_pattern.search(f.name).group(1)))
 
             for f in files:
@@ -86,6 +94,35 @@ def merge_bin_files():
             merged_path = merged_dir / merged_name
             merged.tofile(merged_path)
             print(f"Created merged file: {merged_name}")
+
+            # Create unique filename to avoid overwrites
+            try:
+                # Try short 4-hex uuid suffix but ensure filename doesn't already exist
+                unique_path = None
+                for attempt in range(10):
+                    short = uuid.uuid4().hex[:4]
+                    unique_name = f"{timestamp}_{total_channels}ch_{short}.bin"
+                    candidate = merged_dir / unique_name
+                    if not candidate.exists():
+                        unique_path = candidate
+                        break
+                if unique_path is None:
+                    # fallback to full UUID
+                    unique_name = f"{timestamp}_{total_channels}ch_{uuid.uuid4().hex}.bin"
+                    unique_path = merged_dir / unique_name
+
+                if unique_path != merged_path:
+                    shutil.move(str(merged_path), str(unique_path))
+                    merged_path = unique_path
+
+                # Write status JSON so other processes can detect completion
+                status = {"timestamp": timestamp, "merged": str(merged_path)}
+                status_file = merged_dir / f"{timestamp}_merged_status.json"
+                status_file.write_text(json.dumps(status))
+                os.environ['PY_VAR7'] = 'True'
+                print(f"Merged file written and status updated: {merged_path}")
+            except Exception as e:
+                print(f"Failed to write unique merged file or status: {e}")
 
 
             for mm in memmaps:

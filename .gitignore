@@ -10,3 +10,6 @@ debug.log
 /build
 /Output
 /Merged
+/.github
+/.vscode
+/.venv

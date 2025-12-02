@@ -12,6 +12,8 @@ from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+import uuid
+import json
 #class for managing connection - basically trying to keep backend separate
 
 class ConnectionManager:
@@ -24,10 +26,19 @@ class ConnectionManager:
         self.error_event = threading.Event() #event for error handling
         self.app = app #passing app instance so error msgbox can be shown properly
 
-        self.debug_log_file = open("debug.log", "w") #debug log for extra info
+        # Per-host debug log to reduce cross-host noise
+        logs_dir = Path("logs")
+        try:
+            logs_dir.mkdir(exist_ok=True)
+        except Exception:
+            pass
+        sanitized = str(self.ip).replace(':', '_').replace('.', '_')
+        log_path = logs_dir / f"debug_{sanitized}.log"
+        self.debug_log_file = open(log_path, "a", encoding="utf-8") #append-mode per-host debug log
 
     def log(self, message): #helper method for logging 
-        self.debug_log_file.write(f"{self.ip}: {message}\n")
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.debug_log_file.write(f"[{ts}] {message}\n")
         self.debug_log_file.flush()
 
     def connect(self, use_key=False): #method for connecting to pitaya
@@ -109,9 +120,9 @@ class ConnectionManager:
 
             print(f"Remote files: {remote_files}")
 
-            data_files = [file for file in remote_files if file.endswith('.csv') or file.endswith('.bin')] #tmp location in pitaya has other files so filtering only csv files
+            data_files = [file for file in remote_files if file.endswith('.csv') or file.endswith('.bin')] #tmp location in pitaya has other files so filtering only BIN/CSV files
 
-            # Transfer each CSV file
+            # Transfer each BIN/CSV file
             for file in data_files:
                 remote_path = os.path.join(remote_directory, file).replace("\\", "/")#replacing backslashes with forward slashes
                 local_path = os.path.join(local_directory, file)
@@ -195,6 +206,15 @@ class ConnectionManager:
 
         for timestamp, files in grouped_bins.items():
             try:
+                # Ensure all files contain all the info
+                missing_chan = [f for f in files if CHANNEL_PATTERN.search(f.name) is None]
+                if missing_chan:
+                    missing_names = [m.name for m in missing_chan]
+                    merge_err = f"[{timestamp}] skipping merge - missing channel info in: {missing_names}"
+                    print("ERR:", merge_err)
+                    self.app.error_queue.put(merge_err)
+                    continue
+
                 files.sort(key=lambda f: int(CHANNEL_PATTERN.search(f.name).group(1)))
 
                 memmaps = [np.memmap(f, dtype=np.float32, mode="r") for f in files]
@@ -210,10 +230,36 @@ class ConnectionManager:
                     merged_data[dev_idx*2   :: total_channels] = mm[0::2]
                     merged_data[dev_idx*2+1 :: total_channels] = mm[1::2]
 
-                merged_filename = f"{timestamp}_{total_channels}ch.bin"
-                merged_filepath = target_path / merged_filename
+                # Create unique merged filename to avoid overwrites
+                # Use a short UUID (4 hex chars) to keep filenames concise but check for collisions.
+                # Retry up to 10 times; if still colliding, fall back to full UUID to guarantee uniqueness.
+                merged_filepath = None
+                for attempt in range(10):
+                    short = uuid.uuid4().hex[:4]
+                    merged_filename = f"{timestamp}_{total_channels}ch_{short}.bin"
+                    candidate = target_path / merged_filename
+                    if not candidate.exists():
+                        merged_filepath = candidate
+                        break
+                if merged_filepath is None:
+                    # fallback to full uuid if unlucky
+                    merged_filename = f"{timestamp}_{total_channels}ch_{uuid.uuid4().hex}.bin"
+                    merged_filepath = target_path / merged_filename
+
                 merged_data.tofile(merged_filepath)
                 merged_outputs.append(merged_filepath)
+
+                # Write a small status JSON so other local processes can detect conversion completion
+                try:
+                    status = {"timestamp": timestamp, "merged": str(merged_filepath)}
+                    status_file = target_path / f"{timestamp}_merged_status.json"
+                    status_file.write_text(json.dumps(status))
+                    # Best-effort: set local environment flag (won't persist system-wide)
+                    os.environ['PY_VAR7'] = 'True'
+                    self.log(f"Merged output created: {merged_filepath}")
+                except Exception as e:
+                    self.log(f"Failed to write merged status: {e}")
+
                 archive_path = Path(archive_dir)
                 archive_path.mkdir(parents=True, exist_ok=True)
                 with ThreadPoolExecutor(THREADS) as executor:
