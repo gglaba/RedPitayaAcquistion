@@ -18,6 +18,8 @@ from merge_files import merge_bin_files
 import json
 import os
 import threading
+import time
+import datetime
 
 ctk.set_appearance_mode("dark")
 load_dotenv()
@@ -47,7 +49,6 @@ class App(ctk.CTk):
         self.connections = [] #list of connected pitayas
         self.error_queue = queue.Queue() #queue for error messages
         self.selected_ips = [] #currently selected pitayas from checkboxes
-        # Pipeline control to avoid double-starts when an external guard (PY_VAR6) is active
         self.pipeline_lock = threading.Lock()
         self.pipeline_running = False
         self.pipeline_active_count = 0
@@ -318,20 +319,20 @@ class App(ctk.CTk):
         self.check_transfer_button()#checking for data files upon connecting
 
     def connect_to_device(self, ip): #connecting to pitaya
-            try:
-                rp = ConnectionManager.ConnectionManager(self, ip, 'root', 'root') #creating connection manager object
-                if rp.connect() and rp.client is not None: #if connection is successful add connection to connections list
-                    self.connections.append(rp)
-                    output = rp.execute_command(f"echo 'Connected to {ip}'") #sending command to pitaya to check if connection is successful it should display on user terminal
-                    self.checkboxes_frame.update_label(ip, "Connected") #updating label in checkboxes
-                    self.checkboxes_frame.show_disconnect_button(ip) #showing disconnect button
-                    self.acquire_button.configure(state="normal") #enabling acquire button
-                else:
-                    raise Exception(f"Failed to connect to {ip}") #if connection failed raise exception and show error message
-            except Exception as e:
-                self.error_queue.put(str(e) + f" {ip}")
-                self.checkboxes_frame.update_label(ip, "Failed to connect")
-                self.connect_button.configure(state="normal")
+        try:
+            rp = ConnectionManager.ConnectionManager(self, ip, 'root', 'root')
+            if rp.connect() and rp.client is not None:
+                self.connections.append(rp)
+                output = rp.execute_command(f"echo 'Connected to {ip}'")
+                self.checkboxes_frame.update_label(ip, "Connected")
+                self.checkboxes_frame.show_disconnect_button(ip)
+                self.acquire_button.configure(state="normal")
+            else:
+                raise Exception(f"Failed to connect to {ip}")
+        except Exception as e:
+            self.error_queue.put(str(e) + f" {ip}")
+            self.checkboxes_frame.update_label(ip, "Failed to connect")
+            self.connect_button.configure(state="normal")
 
     def start_acquisition_thread(self):
         threading.Thread(target=self.start_acquisition, args=(self.command,), daemon=True).start() #starting acquisition in separate thread
@@ -342,6 +343,20 @@ class App(ctk.CTk):
             self.pipeline_running = True
             self.pipeline_active_count = len(self.connections) if self.connections else 0
 
+                        # sync device clock to host time with second precision
+        # Set every device clock to current host epoch seconds (date -s '@<sec>') at acquisition start
+        try:
+            ts = int(time.time())
+            for conn in self.connections:
+                try:
+                    conn.execute_command(f"date -s '@{ts}'")
+                except Exception as e:
+                    # non-fatal; report to error queue for visibility
+                    self.error_queue.put(f"Time sync failed for {conn.ip}: {e}")
+        except Exception as e:
+            self.error_queue.put(f"Time sync scheduling failed: {e}")
+
+
         self.status_line.start_timer()
         for connection in self.connections:
             threading.Thread(target=self.run_acquisition, args=(connection, command), daemon=True).start()
@@ -349,39 +364,80 @@ class App(ctk.CTk):
 
     def run_acquisition(self, connection, command): #running acquisition on pitaya
         self.acquire_button.configure(state="normal")
+        # Execute acquisition command (select binary based on Decimation)
         try:
             params = self.inputboxes_frame.get()
-            print(f"Parameters received: {params}")  # Debugging statement
-            # Check if all required parameters are present
+            print(f"Parameters received: {params}")
             required_params = ["Decimation", "Buffer size", "Delay", "Loops"]
             for param in required_params:
                 if param not in params:
                     raise KeyError(f"Missing parameter: {param}")
             param_str = ' '.join([str(params[param]) for param in required_params])
             isLocal_str = str(self.get_Switch_bool(self.isLocal))
-            full_command = f"{command} {param_str} {isLocal_str}"
-            print(f"Executing command: {full_command}")  # Debugging statement
-            stdout, stderr = connection.execute_command(full_command) #sending command to pitaya
-            connection.start_listener() #starting listener for stdout and stderr
+
+            # choose binary: use high_dec2 if Decimation < 64
+            binary = "./test2"
+            try:
+                dec = params.get("Decimation")
+                if dec is not None:
+                    dec_val = int(float(dec))
+                    if dec_val < 64:
+                        binary = "./high_dec"
+            except Exception:
+                # if parsing fails, stick to default binary
+               pass
+
+            # build and execute remote command
+            # if 'command' already contains cd && binary, override binary part to be safe
+            # prefer explicit cd and chosen binary
+            full_command = f"cd /root/RedPitaya/G && {binary} {param_str} {isLocal_str}"
+            print(f"Executing command on {connection.ip}: {full_command}")
+            stdout, stderr = connection.execute_command(full_command)
+            connection.start_listener()
         except Exception as e:
-            e_msg = f"{connection}: {str(e)}" #if error occurred show error message
+            e_msg = f"{connection}: {str(e)}"
             print(e_msg)
             self.error_queue.put(e_msg)
-        finally:
-            self.progress_window.close() 
-            self.status_line.stop_timer() #closing progress window at the end of acquisition process
-        self.check_transfer_button() #check if bin data to transfer is available
-        connection.merge_csv_files(self.get_Switch_bool(self.isMerge),self.get_Switch_bool(self.isLocal),ENV_LOCALPATH, ENV_ARCHIVE_DIR,[pitaya_dict[connection.ip]])
-        self.after(1000,self.status_line.update_status("Merging completed"))
-        self.show_main_view()
-        # Decrement active counter and clear running flag when done
+
+        # Post-acquisition work (transfer/merge) — run best-effort and log errors to queue
+        try:
+            self.check_transfer_button()
+            connection.merge_csv_files(self.get_Switch_bool(self.isMerge),
+                                       self.get_Switch_bool(self.isLocal),
+                                       ENV_LOCALPATH, ENV_ARCHIVE_DIR,
+                                       [pitaya_dict.get(connection.ip)])
+        except Exception as e:
+            err = f"Post-acquisition error for {connection.ip}: {e}"
+            print(err)
+            self.error_queue.put(err)
+
+        # Decrement active counter and only perform UI cleanup when last thread finishes
+        last = False
         with self.pipeline_lock:
-            try:
-                self.pipeline_active_count -= 1
-            except Exception:
-                self.pipeline_active_count = max(0, self.pipeline_active_count - 1)
+            self.pipeline_active_count = max(0, (self.pipeline_active_count or 0) - 1)
             if self.pipeline_active_count <= 0:
                 self.pipeline_running = False
+                last = True
+
+        if last:
+            # schedule UI updates on the main thread
+            def finish_ui():
+                try:
+                    if getattr(self, "progress_window", None):
+                        try:
+                            self.progress_window.close()
+                        except Exception:
+                            pass
+                    try:
+                        self.status_line.stop_timer()
+                    except Exception:
+                        pass
+                    self.after(1000, lambda: self.status_line.update_status("Merging completed"))
+                    self.show_main_view()
+                except Exception as e:
+                    print("Error finishing UI:", e)
+
+            self.after(0, finish_ui)
 
 
     def stop_acquisition(self): #stopping acquisition on pitaya
