@@ -1,3 +1,4 @@
+import sys
 from tkinter import *
 import tkinter
 import customtkinter as ctk
@@ -16,7 +17,7 @@ from StatusLine import StatusLine
 from PresetManager import PresetManager
 from merge_files import merge_bin_files
 import json
-import os
+import re
 import threading
 import time
 import datetime
@@ -89,6 +90,28 @@ class App(ctk.CTk):
         self.preset_controls_frame.grid_columnconfigure(3, weight=0)
         self.preset_controls_frame.grid_columnconfigure(4, weight=1)
 
+        self._bottom_right_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._bottom_right_frame.grid(row=7, column=1, sticky="se", padx=10, pady=10)
+
+        self.xyplot_button = ctk.CTkButton(
+            master=self._bottom_right_frame,
+            text="xy - plot",
+            width=80,
+            height=28,
+            command=self.run_xyplot
+        )
+        self.fft_button = ctk.CTkButton(
+            master=self._bottom_right_frame,
+            text="FFT",
+            width=60,
+            height=28,
+            command=self.run_fft
+        )
+
+        self.xyplot_button.grid(row=0, column=0, padx=(10, 6))
+        self.fft_button.grid(row=0, column=1, padx=(6, 0))
+
+
         preset_names = self.presets.names()
         preset_names.append("Create New Preset...")
         self.presets_box = ctk.CTkComboBox(
@@ -150,9 +173,9 @@ class App(ctk.CTk):
         self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
         self.isMerge = ctk.StringVar(value=0)
-        self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Merge BIN Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
+        self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Automatically merge BIN Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
         self.switch_merge.grid(row=1, column=0, padx=10, pady=10, sticky="w")
-        self.switch_merge.grid_remove()
+        #self.switch_merge.grid_remove()
 
         self.isLoops = ctk.StringVar(value=0)
         self.switch_loops = ctk.CTkSwitch(self.switch_local_frame, text="Loops parameter",command = lambda:self.loops_switch_toggled(), variable=self.isLoops, onvalue=1, offvalue=0)
@@ -201,6 +224,12 @@ class App(ctk.CTk):
                 name = "Local Acquisition"
             elif switch_var is self.isMerge:
                 name = "Merge BIN Files"
+                if bool_value:
+                    self.merge_files_button.grid_remove()
+                    self.merge_files_button.configure(state="disabled")
+                else:
+                    self.merge_files_button.grid()
+                    self.merge_files_button.configure(state="normal")
             elif switch_var is self.isLoops:
                 name = "Loops"
             else:
@@ -382,7 +411,7 @@ class App(ctk.CTk):
                 if dec is not None:
                     dec_val = int(float(dec))
                     if dec_val < 64:
-                        binary = "./high_dec"
+                        binary = "./test2"
             except Exception:
                 # if parsing fails, stick to default binary
                pass
@@ -402,7 +431,7 @@ class App(ctk.CTk):
         # Post-acquisition work (transfer/merge) — run best-effort and log errors to queue
         try:
             self.check_transfer_button()
-            connection.merge_csv_files(self.get_Switch_bool(self.isMerge),
+            connection.merge_csv_files(False,
                                        self.get_Switch_bool(self.isLocal),
                                        ENV_LOCALPATH, ENV_ARCHIVE_DIR,
                                        [pitaya_dict.get(connection.ip)])
@@ -436,6 +465,14 @@ class App(ctk.CTk):
                     self.show_main_view()
                 except Exception as e:
                     print("Error finishing UI:", e)
+
+            if self.get_Switch_bool(self.isMerge):
+                # if merging is enabled, do it before finishing UI
+                try:
+                    self.on_merge_button_click()
+                except Exception as e:
+                    self.error_queue.put(f"Error during merging: {e}")
+                    self.after(0, finish_ui)
 
             self.after(0, finish_ui)
 
@@ -562,6 +599,64 @@ class App(ctk.CTk):
         except Exception as e:
             self.status_line.update_status(f"Error merging files: {str(e)}")
             print(f"Error: {e}")  # For debugging
+    
+    def _spawn_script(self, script_path: Path, args: list):
+            python_exe = sys.executable
+            cmd = [python_exe, str(script_path)] + args
+            try:
+                subprocess.Popen(cmd)
+                return True
+            except Exception as e:
+                self.status_line.update_status(f"Failed to launch: {e}")
+                return False
+
+    def run_xyplot(self):
+        latest = self._find_latest_merged_file(extensions=(".bin", ".BIN"))
+        if not latest:
+            self.status_line.update_status("No merged .bin files found in 'Merged' directory")
+            return
+        script = Path(__file__).parent / "xyplot.py"
+        if not script.exists():
+            self.status_line.update_status("xyplot.py not found")
+            return
+        args = [str(latest)]
+        launched = self._spawn_script(script, args)
+        if launched:
+            self.status_line.update_status(f"Opened xy-plot for {latest.name}")
+
+    def run_fft(self):
+        latest = self._find_latest_merged_file(extensions=(".bin", ".BIN"))
+        if not latest:
+            self.status_line.update_status("No merged .bin files found in 'Merged' directory")
+            return
+        script = Path(__file__).parent / "fft.py"
+        if not script.exists():
+            self.status_line.update_status("fft.py not found")
+            return
+        args = ["--binfile", str(latest), "--channel", "CH1"]
+
+        # Auto-add --channels if filename contains "<N>ch" (e.g. "_6ch" or "6ch_...").
+        m = re.search(r'_(\d+)ch(?=[._-]|$)|(\d+)ch', latest.name, re.IGNORECASE)
+        if m:
+            ch = m.group(1) or m.group(2)
+            if ch:
+                try:
+                    args += ["--channels", str(int(ch))]
+                except Exception:
+                    pass
+        launched = self._spawn_script(script, args)
+        if launched:
+            self.status_line.update_status(f"Opened FFT for {latest.name}")
+
+    def _find_latest_merged_file(self, extensions=(".bin", ".BIN", ".csv", ".CSV")):
+            merged_dir = Path("Merged")
+            if not merged_dir.exists() or not merged_dir.is_dir():
+                return None
+            files = [f for f in merged_dir.iterdir() if f.suffix in extensions and f.is_file()]
+            if not files:
+                return None
+            latest = max(files, key=lambda p: p.stat().st_mtime)
+            return latest
 
 
 if __name__ == "__main__":

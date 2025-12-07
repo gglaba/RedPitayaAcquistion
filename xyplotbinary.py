@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # === Configuration ===
-BIN_FILE = r'Data\CH5V_CH6V_2025_04_09_21_42_17.bin'  # Path to your binary file
+BIN_FILE = r'Data\CH1V_CH2V_2025_12_04_16_14_36.bin'  # Path to your binary file
 CHANNEL = 'CH1'  # 'CH1' or 'CH2'
 
 # === Load Binary Data ===
