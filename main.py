@@ -60,11 +60,11 @@ class App(ctk.CTk):
         self.presets = PresetManager()
         
         self.title("RedPitaya Signal Acquisition")
-        self.geometry("700x700")
+        self.geometry("700x720")
         self.resizable(True,True) #disabling resizing of the window
-        self.minsize(700, 650)
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=2)
+        self.minsize(700, 700)
+        self.grid_columnconfigure(0, weight=2)
+        self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -145,11 +145,11 @@ class App(ctk.CTk):
         self.inputboxes_frame.grid(row=1, column=1, padx=10, pady=(10, 0), sticky="nsew")
 
         self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.initiate_acquisition) #creating acquire button
-        self.acquire_button.grid(row=4, column=0, columnspan=2, padx=20, pady=20)
+        self.acquire_button.grid(row=4, column=0, columnspan=2, padx=20, pady=10)
         self.acquire_button.configure(state="disabled")
 
         self.transfer_button = ctk.CTkButton(self, text="Transfer Data", command=self.transfer_files) #creating transfer button
-        self.transfer_button.grid(row=5, column=0, padx=20,columnspan=2, pady=20)
+        self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=0)
         self.transfer_button.configure(state="disabled")
 
         self.merge_files_button = ctk.CTkButton(self,text = "Merge Files", command=self.on_merge_button_click)
@@ -405,13 +405,13 @@ class App(ctk.CTk):
             isLocal_str = str(self.get_Switch_bool(self.isLocal))
 
             # choose binary: use high_dec2 if Decimation < 64
-            binary = "./test2"
+            binary = "./test3 "
             try:
                 dec = params.get("Decimation")
                 if dec is not None:
                     dec_val = int(float(dec))
-                    if dec_val < 64:
-                        binary = "./test2"
+                    if dec_val <= 256:
+                        binary = "./test3"
             except Exception:
                 # if parsing fails, stick to default binary
                pass
