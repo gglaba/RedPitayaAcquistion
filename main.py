@@ -21,6 +21,8 @@ import re
 import threading
 import time
 import datetime
+from GUI_helper import ToolTip, attach_tooltips
+from verify import parse_footer
 
 ctk.set_appearance_mode("dark")
 load_dotenv()
@@ -141,7 +143,7 @@ class App(ctk.CTk):
         self.delete_preset_btn.grid(row=0, column=4, padx=10, pady=0, sticky="ew")
 
         # --- PARAMETERS (InputBoxes) ---
-        self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops','Time'], status_line=self.status_line)
+        self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops','Time','Trigger Source'], status_line=self.status_line)
         self.inputboxes_frame.grid(row=1, column=1, padx=10, pady=(10, 0), sticky="nsew")
 
         self.acquire_button = ctk.CTkButton(self, text="Acquire Signals", command=self.initiate_acquisition) #creating acquire button
@@ -193,7 +195,61 @@ class App(ctk.CTk):
         self.check_files_to_merge()
         self.bind("<Return>", lambda event:self.initiate_acquisition())
         #self.acquire_button.configure(state="normal")
+        tooltips = {
+            self.checkboxes_frame: "Device list. Select devices to connect to and run acquisition on.",
+            self.connect_button: "Establish SSH connections with the selected devices.",
+            self.presets_box: "Select a preset. Use 'Create New Preset...' to make a new one.",
+            self.save_preset_btn: "Save current acquisition settings as a preset (may overwrite).",
+            self.delete_preset_btn: "Delete the currently selected preset.",
+            self.inputboxes_frame: "Acquisition parameters: Decimation, Buffer size, Delay, Loops, Time.",
+            self.acquire_button: "Start acquisition on all connected devices.",
+            self.transfer_button: "Download BIN files from devices to Data folder",
+            self.merge_files_button: "Merge available .bin files in Data folder, original files are archived.",
+            self.stop_button: "STOPS acquisition and saves current data",
+            self.abort_button: "ABORTS acquisition and deletes data",
+            self.switch_local: "If enabled, acquisition files automatically saved in Data folder",
+            self.switch_merge: "If enabled, automatically merge BIN files after acquisition.",
+            self.switch_open_merged: "If enabled, open the merged file folder after merging.",
+            self.xyplot_button: "Open `xyplot.py` with the latest merged file.",
+            self.fft_button: "Open `fft.py` with the latest merged file.",
+        }
+        param_short = {
+            "Decimation": "Decimation: choose sampling rate",
+            "Buffer size": "Buffer size: number of samples captured per loop.",
+            "Delay": "Delay: pause before acquisition",
+            "Loops": "Loops: how many buffers to acquire",
+            "Time": "Time: target acquisition time (s).",
+            "Trigger Source": "Trigger Source: source of trigger for acquisition"
+        }
 
+        param_long = {
+            "Decimation": "Decimation: in RedPitaya, decimation is the division factor of the max sampling rate ",
+            "Buffer size": "Buffer size: number of samples in RedPitaya buffer. Max is 16384.",
+            "Delay": "Delay: delay before starting acquisition",
+            "Loops": "Loops: Number of buffers to be acquired, total samples = Buffer size * Loops",
+            "Time": "Time: Target acquisition time, total time of the process might be different",
+            "Trigger Source": "Now (immediate - no sync), CHA - CH1, CHB - CH2, PE - positive edge, NE - negative edge"
+        }
+        attach_tooltips(tooltips)
+        try:
+            widgets = self.inputboxes_frame.inputs
+            param_tooltips = {}
+            for key, text in param_short.items():
+                w = widgets.get(key)
+                if w:
+                    param_tooltips[w] = text
+            attach_tooltips(param_tooltips)
+
+            # dodatkowo: pokaż dłuższy opis w StatusLine przy najechaniu
+            for key, long_text in param_long.items():
+                w = widgets.get(key)
+                if w:
+                    # używaj domyślnych argumentów w lambda, żeby nie złapać zmiennej pętli
+                    w.bind("<Enter>", lambda e, t=long_text: self.status_line.update_status(t))
+                    w.bind("<Leave>", lambda e: self.status_line.update_status(""))
+        except Exception:
+        # bezpieczne pominięcie, jeśli struktura InputBoxes się zmieni
+            pass
 
 
     def on_preset_selected(self, _value: str):
@@ -222,6 +278,12 @@ class App(ctk.CTk):
         if name is None:
             if switch_var is self.isLocal:
                 name = "Local Acquisition"
+                if bool_value:
+                    self.transfer_button.grid_remove()
+                    self.transfer_button.configure(state="disabled")
+                else:
+                    self.transfer_button.grid()
+                    self.transfer_button.configure(state="normal")
             elif switch_var is self.isMerge:
                 name = "Merge BIN Files"
                 if bool_value:
@@ -384,7 +446,38 @@ class App(ctk.CTk):
                     self.error_queue.put(f"Time sync failed for {conn.ip}: {e}")
         except Exception as e:
             self.error_queue.put(f"Time sync scheduling failed: {e}")
+        # Clear contents of files in local logs folder at acquisition start
+        try:
+            logs_dir = Path("logs")
+            import shutil
+            if not logs_dir.exists():
+                logs_dir.mkdir(parents=True, exist_ok=True)
 
+            if logs_dir.exists() and logs_dir.is_dir():
+                for p in logs_dir.iterdir():
+                    try:
+                        if p.is_file() or p.is_symlink():
+                            # truncate file contents but keep the file entry
+                            try:
+                                with open(p, 'w'):
+                                    pass
+                            except Exception as e:
+                                self.error_queue.put(f"Failed to truncate log file {p}: {e}")
+                        elif p.is_dir():
+                            # clear directory contents but keep the directory itself
+                            for sub in p.iterdir():
+                                try:
+                                    if sub.is_file() or sub.is_symlink():
+                                        sub.unlink()
+                                    elif sub.is_dir():
+                                        shutil.rmtree(sub)
+                                except Exception as e:
+                                    self.error_queue.put(f"Failed to remove log entry {sub}: {e}")
+                    except Exception as e:
+                        # non-fatal; report and continue
+                        self.error_queue.put(f"Failed while processing log entry {p}: {e}")
+        except Exception as e:
+            self.error_queue.put(f"Failed to clear logs folder: {e}")
 
         self.status_line.start_timer()
         for connection in self.connections:
@@ -397,7 +490,7 @@ class App(ctk.CTk):
         try:
             params = self.inputboxes_frame.get()
             print(f"Parameters received: {params}")
-            required_params = ["Decimation", "Buffer size", "Delay", "Loops"]
+            required_params = ["Decimation", "Buffer size", "Delay", "Loops","Trigger Source"]
             for param in required_params:
                 if param not in params:
                     raise KeyError(f"Missing parameter: {param}")
@@ -405,13 +498,13 @@ class App(ctk.CTk):
             isLocal_str = str(self.get_Switch_bool(self.isLocal))
 
             # choose binary: use high_dec2 if Decimation < 64
-            binary = "./test3 "
+            binary = "./test3_trig"
             try:
                 dec = params.get("Decimation")
                 if dec is not None:
                     dec_val = int(float(dec))
                     if dec_val <= 256:
-                        binary = "./test3"
+                        binary = "./test3_trig"
             except Exception:
                 # if parsing fails, stick to default binary
                pass
@@ -571,6 +664,18 @@ class App(ctk.CTk):
             merge_bin_files()
             self.status_line.update_status("Files merged successfully")
 
+            # # Verify merged file against logs' footers
+            # try:
+            #     verify_result = self.verify_merged_against_logs()
+            #     if verify_result is not None:
+            #         ok, details = verify_result
+            #         if ok:
+            #             self.status_line.update_status("Verification OK: merged file matches logs")
+            #         else:
+            #             self.status_line.update_status(f"Verification FAILED: {details}")
+            # except Exception as e:
+            #     self.error_queue.put(f"Verification failed: {e}")
+
             # Optionally open the most recently created merged BIN in file explorer
             try:
                 if self.get_Switch_bool(self.open_merged, "Open merged file"):
@@ -657,6 +762,51 @@ class App(ctk.CTk):
                 return None
             latest = max(files, key=lambda p: p.stat().st_mtime)
             return latest
+
+    def verify_merged_against_logs(self, merged_path: Path = None):
+        """Sum FOOTER expected sizes from files in `logs/` and compare with merged file size.
+
+        Returns (True, details) if OK, (False, details) if mismatch, or None if no merged file.
+        """
+        try:
+            if merged_path is None:
+                merged_path = self._find_latest_merged_file(extensions=(".bin", ".BIN"))
+            if merged_path is None:
+                return None
+
+            logs_dir = Path("logs")
+            if not logs_dir.exists() or not logs_dir.is_dir():
+                return (False, "logs/ directory missing")
+
+            total_expected = 0
+            files_parsed = 0
+            channels_set = set()
+            samples_set = []
+
+            for p in sorted(logs_dir.iterdir()):
+                if p.is_file():
+                    try:
+                        samples, channels, bps, expected = parse_footer(str(p))
+                        total_expected += expected
+                        files_parsed += 1
+                        channels_set.add(channels)
+                        samples_set.append(samples)
+                    except Exception:
+                        # skip files without FOOTER
+                        continue
+
+            if files_parsed == 0:
+                return (False, "no FOOTER entries found in logs/")
+
+            actual_size = merged_path.stat().st_size
+            if actual_size == total_expected:
+                details = f"files={files_parsed}, expected={total_expected}, actual={actual_size}"
+                return (True, details)
+            else:
+                details = f"files={files_parsed}, sum_expected={total_expected}, merged_actual={actual_size}"
+                return (False, details)
+        except Exception as e:
+            return (False, f"exception: {e}")
 
 
 if __name__ == "__main__":

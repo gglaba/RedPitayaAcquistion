@@ -33,9 +33,21 @@ if __name__ == "__main__":
     if args.max:
         to_plot = {k: v[:args.max] for k, v in to_plot.items()}
 
+    # total samples per channel (after any truncation)
+    try:
+        first_arr = next(iter(to_plot.values()))
+        total_samples = first_arr.shape[0]
+    except StopIteration:
+        total_samples = 0
+
     plt.figure(figsize=(10, 5))
     for k, v in to_plot.items():
         plt.plot(v, label=k)
-    plt.title(args.binfile.name)
+
+    plt.title(f"{args.binfile.name} — samples per channel: {total_samples}")
     plt.xlabel("Próbka"); plt.ylabel("Napięcie [V]")
+    # also draw a small info text in the top-left of the axes
+    plt.gca().text(0.01, 0.98, f"Samples/channel: {total_samples}", transform=plt.gca().transAxes,
+                   va='top', ha='left', fontsize=9, bbox=dict(facecolor='white', alpha=0.6, edgecolor='none'))
+
     plt.grid(alpha=.3); plt.legend(); plt.tight_layout(); plt.show()

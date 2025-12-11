@@ -47,6 +47,14 @@ class InputBoxes(ctk.CTkFrame):
 
         self._updating = False
 
+        TRIG_OPTIONS = [
+            "RP_TRIG_SRC_NOW",
+            "RP_TRIG_SRC_CHA_PE",
+            "RP_TRIG_SRC_CHA_NE",
+            "RP_TRIG_SRC_CHB_PE",
+            "RP_TRIG_SRC_CHB_NE",
+        ]
+
         self.vars: Dict[str, StringVar] = {}
         self.inputs: Dict[str, ctk.CTkEntry | ctk.CTkComboBox] = {}
 
@@ -63,6 +71,7 @@ class InputBoxes(ctk.CTkFrame):
             "Delay":"0",
             "Loops":"64",
             "Time":"0.008",
+            "Trigger Source": "RP_TRIG_SRC_NOW"
         }
 
         for i, lbl in enumerate(self.labels):
@@ -79,6 +88,10 @@ class InputBoxes(ctk.CTkFrame):
                 widget.grid(row=i+1, column=1, padx=(10,0), pady=5, sticky="e")
                 add_btn.grid(row=i+1, column=2, padx=(2,0), pady=5)
                 del_btn.grid(row=i+1, column=3, padx=(2,10), pady=5)
+            elif lbl == "Trigger Source":
+                var = StringVar(value="RP_TRIG_SRC_NOW")
+                widget = ctk.CTkComboBox(self, variable=var, values=TRIG_OPTIONS)
+                widget.grid(row=i+1, column=1, padx=10, pady=5, sticky="e", columnspan=3)
             else:
                 var = StringVar(value=default_values.get(lbl, "0"))
                 widget = ctk.CTkEntry(self, textvariable=var)
@@ -190,6 +203,8 @@ class InputBoxes(ctk.CTkFrame):
             if lbl == "Decimation":
                 key = widget.get()
                 out[lbl] = self.decimation_options.get(key, "1")
+            elif lbl == "Trigger Source":
+                out[lbl] = widget.get()
             else:
                 raw = widget.get()
                 out[lbl] = float(raw) if lbl == "Time" else int(raw or 0)
@@ -210,6 +225,8 @@ class InputBoxes(ctk.CTkFrame):
                     list(self.decimation_options.keys())[0]
                 )
                 widget.set(key)
+            elif lbl == "Trigger Source":
+                self._set_var(lbl, str(params[lbl]))
             else:
                 self._set_var(lbl, str(params[lbl]))
 
