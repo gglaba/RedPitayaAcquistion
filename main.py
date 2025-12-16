@@ -154,7 +154,7 @@ class App(ctk.CTk):
         self.transfer_button.grid(row=5, column=0, padx=10,columnspan=2, pady=0)
         self.transfer_button.configure(state="disabled")
 
-        self.merge_files_button = ctk.CTkButton(self,text = "Merge Files", command=self.on_merge_button_click)
+        self.merge_files_button = ctk.CTkButton(self,text = "Manually Merge Files", command=self.on_merge_button_click)
         self.merge_files_button.grid(row=6, column=0, padx=20, pady=20,columnspan=2)
         #self.merge_files_button.configure(state="disabled")
 
@@ -204,7 +204,7 @@ class App(ctk.CTk):
             self.inputboxes_frame: "Acquisition parameters: Decimation, Buffer size, Delay, Loops, Time.",
             self.acquire_button: "Start acquisition on all connected devices.",
             self.transfer_button: "Download BIN files from devices to Data folder",
-            self.merge_files_button: "Merge available .bin files in Data folder, original files are archived.",
+            self.merge_files_button: "Groupes and merges all available .bin files in Data folder.",
             self.stop_button: "STOPS acquisition and saves current data",
             self.abort_button: "ABORTS acquisition and deletes data",
             self.switch_local: "If enabled, acquisition files automatically saved in Data folder",
@@ -287,8 +287,9 @@ class App(ctk.CTk):
             elif switch_var is self.isMerge:
                 name = "Merge BIN Files"
                 if bool_value:
-                    self.merge_files_button.grid_remove()
-                    self.merge_files_button.configure(state="disabled")
+                    pass
+                    #self.merge_files_button.grid_remove()
+                    #self.merge_files_button.configure(state="disabled")
                 else:
                     self.merge_files_button.grid()
                     self.merge_files_button.configure(state="normal")
@@ -498,7 +499,7 @@ class App(ctk.CTk):
             isLocal_str = str(self.get_Switch_bool(self.isLocal))
 
             # choose binary: use high_dec2 if Decimation < 64
-            binary = "./test3_trig"
+            binary = "./test2"
             try:
                 dec = params.get("Decimation")
                 if dec is not None:
