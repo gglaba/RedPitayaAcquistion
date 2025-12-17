@@ -75,3 +75,101 @@
 
 [2025-12-09 21:45:28] Tue Dec  9 08:45:28 PM UTC 2025
 
+[2025-12-17 01:47:26] Connected to rp-f0ba38.local
+
+[2025-12-17 01:47:34] Disconnected
+[2025-12-17 01:47:44] Connected to rp-f0ba38.local
+
+[2025-12-17 01:48:03] Disconnected
+[2025-12-17 01:51:45] Connected to rp-f0ba38.local
+
+[2025-12-17 01:51:52] bash: line 1: overlay.sh: command not found
+
+[2025-12-17 01:51:52] bash: line 1: streaming-server: command not found
+
+[2025-12-17 01:52:07] Disconnected
+[2025-12-17 01:57:56] Connected to rp-f0ba38.local
+
+[2025-12-17 01:58:05] bash: line 1: overlay.sh: command not found
+
+[2025-12-17 01:58:06] bash: line 1: streaming-server: command not found
+
+[2025-12-17 02:00:45] Connected to rp-f0ba38.local
+
+[2025-12-17 02:00:47] bash: line 1: /opt/redpitaya/bin/overlay.sh: No such file or directory
+
+[2025-12-17 02:00:59] Disconnected
+[2025-12-17 02:02:14] Connected to rp-f0ba38.local
+
+[2025-12-17 02:02:19] bash: line 1: ./overlay.sh: No such file or directory
+
+[2025-12-17 02:02:20] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:02:25] Disconnected
+[2025-12-17 02:02:39] Connected to rp-f0ba38.local
+
+[2025-12-17 02:02:43] bash: line 1: overlay.sh: command not found
+
+[2025-12-17 02:02:44] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:06:06] Connected to rp-f0ba38.local
+
+[2025-12-17 02:06:10] bash: line 1: overlay.sh: command not found
+
+[2025-12-17 02:06:12] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:06:18] Disconnected
+[2025-12-17 02:07:04] Connected to rp-f0ba38.local
+
+[2025-12-17 02:07:06] bash: line 1: ./opt/redpitaya/sbin/overlay.sh: No such file or directory
+
+[2025-12-17 02:07:07] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:07:11] Disconnected
+[2025-12-17 02:08:47] Connected to rp-f0ba38.local
+
+[2025-12-17 02:09:18] bash: line 1: overlay.sh: command not found
+
+[2025-12-17 02:09:19] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:09:25] Disconnected
+[2025-12-17 02:10:52] Connected to rp-f0ba38.local
+
+[2025-12-17 02:10:54] TEST
+
+[2025-12-17 02:10:54] -rwxr-xr-x 1 root root 3177 Nov 28 18:11 /opt/redpitaya/sbin/overlay.sh
+
+[2025-12-17 02:10:55] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:11:44] TEST
+
+[2025-12-17 02:11:44] -rwxr-xr-x 1 root root 3177 Nov 28 18:11 /opt/redpitaya/sbin/overlay.sh
+
+[2025-12-17 02:11:45] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:11:59] Disconnected
+[2025-12-17 02:12:26] Connected to rp-f0ba38.local
+
+[2025-12-17 02:12:29] TEST
+
+[2025-12-17 02:12:29] -rwxr-xr-x 1 root root 3177 Nov 28 18:11 /opt/redpitaya/sbin/overlay.sh
+
+[2025-12-17 02:13:37] Connected to rp-f0ba38.local
+
+[2025-12-17 02:13:39] TEST
+
+[2025-12-17 02:13:39] ls: cannot access 'stream_app': No such file or directory
+
+[2025-12-17 02:13:39] -rwxr-xr-x 1 root root 3177 Nov 28 18:11 /opt/redpitaya/sbin/overlay.sh
+-rwxr-xr-x 1 root root 3177 Nov 28 18:11 /opt/redpitaya/sbin/overlay.sh
+
+[2025-12-17 02:13:40] Error: Init ServerNetConfigManager() bind: Address already in use
+
+[2025-12-17 02:13:46] Disconnected
+[2025-12-17 02:14:51] Connected to rp-f0ba38.local
+
+[2025-12-17 02:14:55] TEST
+
+[2025-12-17 02:14:55] Commit 
+[2025-12-17 02:14:55] f8ee1d3d56810a59753268ae6d2091e6552d57ba
+

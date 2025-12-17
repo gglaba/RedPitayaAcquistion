@@ -23,6 +23,7 @@ import time
 import datetime
 from GUI_helper import ToolTip, attach_tooltips
 from verify import parse_footer
+import json
 
 ctk.set_appearance_mode("dark")
 load_dotenv()
@@ -187,12 +188,20 @@ class App(ctk.CTk):
         self.isStreaming = ctk.StringVar(value=0)
         self.switch_streaming = ctk.CTkSwitch(self.switch_local_frame, text="Streaming mode",command = lambda:self.get_Switch_bool(self.isStreaming), variable=self.isStreaming, onvalue=1, offvalue=0)
         self.switch_streaming.grid(row=2, column=0, padx=10, pady=5, sticky="w")
-        
+        #self.switch_streaming.grid_remove()
+
+        self.send_config_button = ctk.CTkButton(self, text="Send config",command=lambda: self.save_streaming_config())
+        self.send_config_button.grid(row=4,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
+        self.send_config_button.grid_remove()
+
+        self.start_server_button = ctk.CTkButton(self, text="Start Streaming Server",command=lambda: self.start_streaming_mode())
+        self.start_server_button.grid(row=3,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
+        self.start_server_button.grid_remove()
 
         # Open merged file switch (placed with other switches)
         self.open_merged = ctk.StringVar(value=0)
         self.switch_open_merged = ctk.CTkSwitch(self.switch_local_frame, text="Open acquisition folder after merge", command=lambda: self.get_Switch_bool(self.open_merged, "Open merged file"), variable=self.open_merged, onvalue=1, offvalue=0)
-        self.switch_open_merged.grid(row=3, column=0, padx=10, pady=2, sticky="w")
+        self.switch_open_merged.grid(row=4, column=0, padx=10, pady=2, sticky="w")
 
         self.check_errors() #constantly checking for errors in queue
         self.check_new_checked_boxes() #constantly checking for new checked boxes
@@ -276,6 +285,43 @@ class App(ctk.CTk):
         self.presets_box.configure(values=list(self.presets.load_all().keys()))
         self.presets_box.set("")
 
+    def save_streaming_config(self):
+        config_path = Path("streaming_mode/config.json")
+        # Load existing config or create new structure
+        if config_path.exists():
+            try:
+                with config_path.open("r", encoding="utf-8") as f:
+                    config = json.load(f)
+            except Exception as e:
+                self.status_line.update_status(f"Failed to load config.json: {e}")
+                config = {}
+        else:
+            config = {}
+
+        # Get current streaming parameters from InputBoxes
+        params = self.inputboxes_frame.get_streaming_params()
+
+        # Convert numeric fields if needed (adc_decimation should be int)
+        if "adc_decimation" in params:
+            try:
+                params["adc_decimation"] = int(params["adc_decimation"])
+            except Exception:
+                pass
+
+        # Update or create 'adc_streaming' section
+        config["adc_streaming"] = config.get("adc_streaming", {})
+        config["adc_streaming"].update(params)
+
+        # Save back to config.json
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            with config_path.open("w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+                self.status_line.update_status("Streaming config saved.")
+        except Exception as e:
+            self.status_line.update_status(f"Failed to save config.json: {e}")
+
+
 
     def get_Switch_bool(self, switch_var, name: str = None):
         bool_value = bool(int(switch_var.get()))
@@ -302,7 +348,13 @@ class App(ctk.CTk):
                 name = "Loops"
             elif switch_var is self.isStreaming:
                 name = "Streaming mode"
-                self.clear_grid_for_streaming()
+                if bool_value:
+                    # entering streaming view
+                    self.clear_grid_for_streaming()
+                    self.start_server_button.grid()
+                else:
+                    # leaving streaming view -> hard restart app
+                    self.after(0, self.restart_app)
             else:
                 name = "Switch"
         print(f"{name}: {bool_value}")
@@ -325,6 +377,33 @@ class App(ctk.CTk):
         else:
             self.inputboxes_frame.show_input("Loops")
 
+    def start_streaming_mode(self):
+        for connection in self.connections:
+            threading.Thread(target=self.streaming_worker, args=(connection,), daemon=True).start()
+            
+            
+    def streaming_worker(self,connection):
+        try:
+                    # Step 1: overlay.sh stream_app
+            self.status_line.update_status(f"{connection.ip}: Running overlay.sh stream_app...")
+            stdout, stderr = connection.execute_command("echo TEST && /opt/redpitaya/sbin/overlay.sh stream_app")
+            connection.start_listener()
+                    # Wait for overlay to finish (optional: check output or just sleep briefly)
+            time.sleep(1)
+                    # Step 2: streaming-server
+            self.status_line.update_status(f"{connection.ip}: Starting streaming-server...")
+            stdout, stderr = connection.execute_command("/opt/redpitaya/bin/streaming-server")
+            connection.start_listener()
+            self.status_line.update_status(f"{connection.ip}: Streaming server started.")
+            self.start_server_button.grid_remove()
+        except Exception as e:
+            err = f"Streaming mode failed for {connection.ip}: {e}"
+            print(err)
+            self.error_queue.put(err)
+
+
+        
+
     def show_acquisition_view(self): #showing acquisition view
         self.connect_button.grid_remove()
         self.acquire_button.grid_remove()
@@ -334,6 +413,34 @@ class App(ctk.CTk):
         self.merge_files_button.grid_remove()
         self.stop_button.grid()
         self.abort_button.grid()
+    
+    def reset_view(self):
+        # legacy: keep for compatibility; delegate to restart
+        self.restart_app()
+
+    def restart_app(self):
+        """Spawn a fresh instance of this script and close the current window."""
+        try:
+            # Launch new process
+            script_path = Path(__file__).resolve()
+            python_exe = sys.executable
+            subprocess.Popen([python_exe, str(script_path)])
+        except Exception as e:
+            # If spawning fails, just log and try to restore main view
+            try:
+                self.status_line.update_status(f"Restart failed: {e}")
+            except Exception:
+                pass
+            try:
+                self.show_main_view()
+            except Exception:
+                pass
+            return
+        # Close current app
+        try:
+            self.destroy()
+        except Exception:
+            os._exit(0)
 
     def show_main_view(self): #showing main view
         self.stop_button.grid_remove()
@@ -349,18 +456,19 @@ class App(ctk.CTk):
         self.connect_button.grid_remove()
         self.acquire_button.grid_remove()
         self.transfer_button.grid_remove()
-        self.switch_local_frame.grid_remove()
+        self.switch_local.grid_remove()
+        self.switch_open_merged.grid_remove()
         self.switch_merge.grid_remove()
         self.merge_files_button.grid_remove()
         self.stop_button.grid_remove()
         self.abort_button.grid_remove()
-        self.checkboxes_frame.grid_remove()
+        self.checkboxes_frame.grid(row=0, column=0, rowspan=1, padx=10, pady=(10, 10), sticky="nsew")
         self.xyplot_button.grid_remove()
         self.fft_button.grid_remove()
         self.preset_controls_frame.grid_remove()
-        #self.inputboxes_frame.grid_remove()
-        self.inputboxes_frame.grid(row=1, column=0,columnspan=2, padx=10, pady=(10, 0), sticky="nsew")
+        self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 10), sticky="nsew")
         self.inputboxes_frame.create_streaming_view()
+        self.send_config_button.grid()
     
     def check_new_checked_boxes(self): #checking if new checkboxes are checked, if so and not connected already enable connect button
         selected_ips = self.checkboxes_frame.get()
@@ -444,6 +552,7 @@ class App(ctk.CTk):
                 self.checkboxes_frame.update_label(ip, "Connected")
                 self.checkboxes_frame.show_disconnect_button(ip)
                 self.acquire_button.configure(state="normal")
+                self.switch_streaming.grid()
             else:
                 raise Exception(f"Failed to connect to {ip}")
         except Exception as e:
