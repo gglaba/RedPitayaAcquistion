@@ -53,6 +53,7 @@ class App(ctk.CTk):
         self.connections = [] #list of connected pitayas
         self.error_queue = queue.Queue() #queue for error messages
         self.selected_ips = [] #currently selected pitayas from checkboxes
+        self.streaming_ips = [] #list of pitayas in streaming mode
         self.pipeline_lock = threading.Lock()
         self.pipeline_running = False
         self.pipeline_active_count = 0
@@ -318,9 +319,99 @@ class App(ctk.CTk):
             with config_path.open("w", encoding="utf-8") as f:
                 json.dump(config, f, indent=4)
                 self.status_line.update_status("Streaming config saved.")
+                #self.send_config_to_devices(self, config_path)
+                #self.run_terminal_command("cd streaming_mode && rpsa_client.exe -d")
+                #print(self.run_client_detect())
+                self.run_client_detect(True)
+                print(self.streaming_ips)
+
         except Exception as e:
             self.status_line.update_status(f"Failed to save config.json: {e}")
+        self.send_config_command(config_path)
 
+
+    # def run_client_detect(self):
+    #     try:
+    #         # Build the command to run rpsa_client.exe with -d
+    #         exe_path = os.path.join("streaming_mode", "rpsa_client.exe")
+    #         command = [exe_path, "-d"]
+    #         # Run the command and capture output
+    #         result = subprocess.run(command, capture_output=True, text=True, check=True)
+    #         return result.stdout
+    #     except subprocess.CalledProcessError as e:
+    #         return f"Error: {e}\nOutput: {e.output}\nStderr: {e.stderr}"
+    #     except Exception as e:
+    #         return f"Exception: {e}"
+
+    def send_config_command(self, config_path):
+        exe_path = str(Path("streaming_mode") / "rpsa_client.exe")
+        command = [
+            exe_path,
+            "-c",
+            "-h", ",".join(self.streaming_ips),
+            "-s", "F",
+            "-f", str(config_path),
+            "-v"
+        ]
+
+        def run_and_capture():
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                stdout, stderr = process.communicate(timeout=15)
+                if process.returncode == 0:
+                    self.status_line.update_status("Config sent successfully.")
+                else:
+                    self.status_line.update_status(f"Error sending config: {stderr or stdout}")
+                return stdout
+            except Exception as e:
+                self.status_line.update_status(f"Failed to run rpsa_client.exe: {e}")
+                return str(e)
+
+        # Run in a background thread to avoid blocking the GUI
+        thread = threading.Thread(target=run_and_capture, daemon=True)
+        thread.start()
+
+    def run_client_detect(self,detect=True):
+        # Launch rpsa_client.exe with -d and capture output
+        if detect:
+            command = ["streaming_mode/rpsa_client.exe", "-d"]
+        else:
+            command = ["streaming_mode/rpsa_client.exe -c -h", ",".join(self.streaming_ips), "-s", "F", "-f", "/streaming_mode/config.json", "-v"]
+            print(command)
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            output = result.stdout
+        except subprocess.CalledProcessError as e:
+            output = e.stdout or e.stderr or str(e)
+            return "", []
+
+        if detect:
+            # Find the last occurrence of "Found boards:" and extract everything after
+            found_idx = output.rfind("Found boards:")
+            if found_idx == -1:
+                return "", []
+
+            summary = output[found_idx:].strip()
+
+            # Extract IPs using regex (matches IPv4 addresses)
+            ips = re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", summary)
+            self.streaming_ips = ips
+
+            return summary, ips
+
+    def run_terminal_command(self,command):
+        os.system(f'{command}')
+        return sys
 
 
     def get_Switch_bool(self, switch_var, name: str = None):
@@ -380,6 +471,7 @@ class App(ctk.CTk):
     def start_streaming_mode(self):
         for connection in self.connections:
             threading.Thread(target=self.streaming_worker, args=(connection,), daemon=True).start()
+        self.start_server_button.grid_remove()
             
             
     def streaming_worker(self,connection):
@@ -395,7 +487,7 @@ class App(ctk.CTk):
             stdout, stderr = connection.execute_command("/opt/redpitaya/bin/streaming-server")
             connection.start_listener()
             self.status_line.update_status(f"{connection.ip}: Streaming server started.")
-            self.start_server_button.grid_remove()
+
         except Exception as e:
             err = f"Streaming mode failed for {connection.ip}: {e}"
             print(err)
@@ -438,6 +530,8 @@ class App(ctk.CTk):
             return
         # Close current app
         try:
+            for connection in self.connections:
+                connection.execute_command("reboot")
             self.destroy()
         except Exception:
             os._exit(0)
