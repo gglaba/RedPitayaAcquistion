@@ -2,6 +2,8 @@ import customtkinter as ctk
 from tkinter import StringVar, simpledialog, messagebox
 from typing import Any, Dict
 from DecimationManager import DecimationManager
+import json
+from pathlib import Path
 
 def _sampling_rate(dec_key: str, dec_dict: Dict[str, str]) -> float:
     return 125e6 / int(dec_dict[dec_key])
@@ -266,3 +268,114 @@ class InputBoxes(ctk.CTkFrame):
                 self.status_line.update_status(f"Error during recalculation: {error}")
             else:
                 raise
+    
+    def create_streaming_view(self, config_path: str | Path = "streaming_mode/config.json") -> None:
+        """
+        Switch UI to streaming mode and show only permitted editable settings:
+          - data_type_sd
+          - format_sd
+          - resolution
+          - channel_state_1
+          - channel_state_2
+          - channel_attenuator_1
+          - channel_attenuator_2
+          - adc_decimation
+        """
+        import json
+        from pathlib import Path
+
+        # 1) Hide ALL existing children to avoid overlapping with streaming controls
+        for child in list(self.winfo_children()):
+            try:
+                child.grid_remove()
+            except Exception:
+                pass
+
+        # 2) Clear mappings of inputs for now (keep vars dict so get()/set() stays safe)
+        #    We only replace/add streaming keys inside self.inputs.
+        for k in list(self.inputs.keys()):
+            self.inputs.pop(k, None)
+
+        # 3) Define editable keys and option sets
+        editable_keys = [
+            "data_type_sd",
+            "format_sd",
+            "resolution",
+            "channel_state_1",
+            "channel_state_2",
+            "channel_attenuator_1",
+            "channel_attenuator_2",
+            "adc_decimation",
+        ]
+        options = {
+            "data_type_sd": ["VOLT", "RAW"],
+            "format_sd": ["BIN", "CSV"],
+            "resolution": ["BIT_16", "BIT_8"],
+            "channel_state_1": ["ON", "OFF"],
+            "channel_state_2": ["ON", "OFF"],
+            "channel_attenuator_1": ["A_1_1", "A_1_20"],
+            "channel_attenuator_2": ["A_1_1", "A_1_20"],
+            "adc_decimation": ["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024", "2048", "4096", "8192"],
+        }
+
+        # 4) Load defaults from config.json
+        defaults: dict[str, str] = {}
+        cfg_path = Path(config_path)
+        if cfg_path.exists():
+            try:
+                with cfg_path.open("r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                adc = cfg.get("adc_streaming", {})
+                for k in editable_keys:
+                    v = adc.get(k)
+                    if v is not None:
+                        defaults[k] = str(v)
+            except Exception as e:
+                if self.status_line:
+                    self.status_line.update_status(f"Streaming config load failed: {e}")
+
+        # 5) Recreate the streaming UI cleanly
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(self, text="Streaming Parameters",
+                     fg_color="gray30", corner_radius=6)\
+            .grid(row=0, column=0, columnspan=4, padx=10, pady=(10, 4), sticky="ew")
+
+        row = 1
+        for key in editable_keys:
+            pretty = key.replace("_", " ")
+            ctk.CTkLabel(self, text=pretty).grid(row=row, column=0, padx=10, pady=5, sticky="w")
+
+            # Default to config value or first option
+            val = defaults.get(key, options[key][0])
+            var = StringVar(value=val)
+            widget = ctk.CTkComboBox(self, variable=var, values=options[key])
+            widget.grid(row=row, column=1, padx=10, pady=5, sticky="ew", columnspan=3)
+
+            self.vars[key] = var
+            self.inputs[key] = widget
+            row += 1
+
+        if self.status_line:
+            self.status_line.update_status("Streaming mode UI loaded.")
+
+    def get_streaming_params(self) -> Dict[str, str]:
+        """
+        Return current streaming parameter selections for the editable set.
+        """
+        keys = [
+            "data_type_sd",
+            "format_sd",
+            "resolution",
+            "channel_state_1",
+            "channel_state_2",
+            "channel_attenuator_1",
+            "channel_attenuator_2",
+            "adc_decimation",
+        ]
+        out: Dict[str, str] = {}
+        for k in keys:
+            w = self.inputs.get(k)
+            if w:
+                out[k] = w.get()
+        return out

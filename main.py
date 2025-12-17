@@ -172,17 +172,22 @@ class App(ctk.CTk):
         self.switch_local_frame = ctk.CTkFrame(self)
         self.switch_local_frame.grid(row=4, column=0, padx=10, pady=10, sticky="w")
         self.switch_local = ctk.CTkSwitch(self.switch_local_frame, text="Local Acquisition",command= lambda:self.get_Switch_bool(self.isLocal), variable=self.isLocal, onvalue=1, offvalue=0)
-        self.switch_local.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        self.switch_local.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         self.isMerge = ctk.StringVar(value=0)
         self.switch_merge = ctk.CTkSwitch(self.switch_local_frame, text="Automatically merge BIN Files",command = lambda:self.get_Switch_bool(self.isMerge), variable=self.isMerge, onvalue=1, offvalue=0)
-        self.switch_merge.grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        self.switch_merge.grid(row=1, column=0, padx=10, pady=5, sticky="w")
         #self.switch_merge.grid_remove()
 
         self.isLoops = ctk.StringVar(value=0)
         self.switch_loops = ctk.CTkSwitch(self.switch_local_frame, text="Loops parameter",command = lambda:self.loops_switch_toggled(), variable=self.isLoops, onvalue=1, offvalue=0)
-        self.switch_loops.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        self.switch_loops.grid(row=2, column=0, padx=10, pady=5, sticky="w")
         self.switch_loops.grid_remove()
+
+        self.isStreaming = ctk.StringVar(value=0)
+        self.switch_streaming = ctk.CTkSwitch(self.switch_local_frame, text="Streaming mode",command = lambda:self.get_Switch_bool(self.isStreaming), variable=self.isStreaming, onvalue=1, offvalue=0)
+        self.switch_streaming.grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        
 
         # Open merged file switch (placed with other switches)
         self.open_merged = ctk.StringVar(value=0)
@@ -295,6 +300,9 @@ class App(ctk.CTk):
                     self.merge_files_button.configure(state="normal")
             elif switch_var is self.isLoops:
                 name = "Loops"
+            elif switch_var is self.isStreaming:
+                name = "Streaming mode"
+                self.clear_grid_for_streaming()
             else:
                 name = "Switch"
         print(f"{name}: {bool_value}")
@@ -336,6 +344,23 @@ class App(ctk.CTk):
         self.switch_local_frame.grid()
         self.switch_merge.grid()
         self.merge_files_button.grid()
+
+    def clear_grid_for_streaming(self):
+        self.connect_button.grid_remove()
+        self.acquire_button.grid_remove()
+        self.transfer_button.grid_remove()
+        self.switch_local_frame.grid_remove()
+        self.switch_merge.grid_remove()
+        self.merge_files_button.grid_remove()
+        self.stop_button.grid_remove()
+        self.abort_button.grid_remove()
+        self.checkboxes_frame.grid_remove()
+        self.xyplot_button.grid_remove()
+        self.fft_button.grid_remove()
+        self.preset_controls_frame.grid_remove()
+        #self.inputboxes_frame.grid_remove()
+        self.inputboxes_frame.grid(row=1, column=0,columnspan=2, padx=10, pady=(10, 0), sticky="nsew")
+        self.inputboxes_frame.create_streaming_view()
     
     def check_new_checked_boxes(self): #checking if new checkboxes are checked, if so and not connected already enable connect button
         selected_ips = self.checkboxes_frame.get()

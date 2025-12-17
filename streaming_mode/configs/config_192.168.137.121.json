@@ -1,0 +1,42 @@
+{
+	"adc_streaming" : 
+	{
+		"adc_decimation" : 4,
+		"adc_pass_mode" : "NET",
+		"channel_ac_dc_1" : "DC",
+		"channel_ac_dc_2" : "DC",
+		"channel_ac_dc_3" : "DC",
+		"channel_ac_dc_4" : "DC",
+		"channel_attenuator_1" : "A_1_20",
+		"channel_attenuator_2" : "A_1_20",
+		"channel_attenuator_3" : "A_1_1",
+		"channel_attenuator_4" : "A_1_1",
+		"channel_state_1" : "ON",
+		"channel_state_2" : "ON",
+		"channel_state_3" : "OFF",
+		"channel_state_4" : "OFF",
+		"data_type_sd" : "VOLT",
+		"format_sd" : "BIN",
+		"resolution" : "BIT_16",
+		"samples_limit_sd" : 0,
+		"use_calib" : "ON"
+	},
+	"dac_streaming" : 
+	{
+		"channel_gain_1" : "X1",
+		"channel_gain_2" : "X1",
+		"dac_pass_mode" : "DAC_NET",
+		"dac_rate" : 125000000,
+		"file_sd" : "",
+		"file_type_sd" : "WAV",
+		"repeat" : "DAC_REP_OFF",
+		"repeatCount" : 0
+	},
+	"memory_manager" : 
+	{
+		"adc_size" : 787968,
+		"block_size" : 65536,
+		"dac_size" : 787968,
+		"gpio_size" : 787968
+	}
+}
