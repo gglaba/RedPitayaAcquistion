@@ -270,20 +270,6 @@ class InputBoxes(ctk.CTkFrame):
                 raise
     
     def create_streaming_view(self, config_path: str | Path = "streaming_mode/config.json") -> None:
-        """
-        Switch UI to streaming mode and show only permitted editable settings:
-          - data_type_sd
-          - format_sd
-          - resolution
-          - channel_state_1
-          - channel_state_2
-          - channel_attenuator_1
-          - channel_attenuator_2
-          - adc_decimation
-        """
-        import json
-        from pathlib import Path
-
         # 1) Hide ALL existing children to avoid overlapping with streaming controls
         for child in list(self.winfo_children()):
             try:
@@ -309,7 +295,7 @@ class InputBoxes(ctk.CTkFrame):
         ]
         options = {
             "data_type_sd": ["VOLT", "RAW"],
-            "format_sd": ["BIN", "CSV"],
+            "format_sd": ["BIN", "WAV","TDMS"],
             "resolution": ["BIT_16", "BIT_8"],
             "channel_state_1": ["ON", "OFF"],
             "channel_state_2": ["ON", "OFF"],
@@ -338,7 +324,7 @@ class InputBoxes(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(self, text="Streaming Parameters",
-                     fg_color="gray30", corner_radius=6)\
+                    fg_color="gray30", corner_radius=6)\
             .grid(row=0, column=0, columnspan=4, padx=10, pady=(10, 4), sticky="ew")
 
         row = 1
@@ -356,12 +342,21 @@ class InputBoxes(ctk.CTkFrame):
             self.inputs[key] = widget
             row += 1
 
+        # --- Add "Time" parameter for user only (not saved to JSON) ---
+        ctk.CTkLabel(self, text="Time (s)").grid(row=row, column=0, padx=10, pady=5, sticky="w")
+        time_var = StringVar(value="1")
+        time_entry = ctk.CTkEntry(self, textvariable=time_var)
+        time_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew", columnspan=3)
+        self.vars["streaming_time"] = time_var
+        self.inputs["streaming_time"] = time_entry
+
         if self.status_line:
             self.status_line.update_status("Streaming mode UI loaded.")
 
-    def get_streaming_params(self) -> Dict[str, str]:
+    def get_streaming_params(self) -> dict[str, str]:
         """
         Return current streaming parameter selections for the editable set.
+        Excludes the 'Time' parameter (which is for UI only).
         """
         keys = [
             "data_type_sd",
@@ -373,9 +368,13 @@ class InputBoxes(ctk.CTkFrame):
             "channel_attenuator_2",
             "adc_decimation",
         ]
-        out: Dict[str, str] = {}
+        out: dict[str, str] = {}
         for k in keys:
             w = self.inputs.get(k)
             if w:
                 out[k] = w.get()
+        # Do NOT include 'streaming_time' in output
         return out
+
+    def get_streaming_time(self) -> str:
+        return self.vars.get("streaming_time", StringVar(value="1.0")).get()

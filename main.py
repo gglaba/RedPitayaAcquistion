@@ -54,6 +54,7 @@ class App(ctk.CTk):
         self.error_queue = queue.Queue() #queue for error messages
         self.selected_ips = [] #currently selected pitayas from checkboxes
         self.streaming_ips = [] #list of pitayas in streaming mode
+        self.streaming_time = 1.0
         self.pipeline_lock = threading.Lock()
         self.pipeline_running = False
         self.pipeline_active_count = 0
@@ -64,7 +65,7 @@ class App(ctk.CTk):
         self.presets = PresetManager()
         
         self.title("RedPitaya Signal Acquisition")
-        self.geometry("700x720")
+        self.geometry("750x750")
         self.resizable(True,True) #disabling resizing of the window
         self.minsize(700, 700)
         self.grid_columnconfigure(0, weight=2)
@@ -112,8 +113,20 @@ class App(ctk.CTk):
             command=self.run_fft
         )
 
+        # Live Preview button for streaming mode
+        self.live_preview_button = ctk.CTkButton(
+            master=self._bottom_right_frame,
+            text="Live Preview",
+            width=100,
+            height=28,
+            command=self.run_live_preview
+        )
+
         self.xyplot_button.grid(row=0, column=0, padx=(10, 6))
         self.fft_button.grid(row=0, column=1, padx=(6, 0))
+
+        # Live Preview button is hidden by default
+        self.live_preview_button.grid_remove()
 
 
         preset_names = self.presets.names()
@@ -199,6 +212,10 @@ class App(ctk.CTk):
         self.start_server_button.grid(row=3,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
         self.start_server_button.grid_remove()
 
+        self.start_streaming_button = ctk.CTkButton(self, text="Start Streaming Data",command=lambda: self.send_streaming_command())
+        self.start_streaming_button.grid(row=2,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
+        self.start_streaming_button.grid_remove()
+
         # Open merged file switch (placed with other switches)
         self.open_merged = ctk.StringVar(value=0)
         self.switch_open_merged = ctk.CTkSwitch(self.switch_local_frame, text="Open acquisition folder after merge", command=lambda: self.get_Switch_bool(self.open_merged, "Open merged file"), variable=self.open_merged, onvalue=1, offvalue=0)
@@ -227,6 +244,7 @@ class App(ctk.CTk):
             self.switch_open_merged: "If enabled, open the merged file folder after merging.",
             self.xyplot_button: "Open `xyplot.py` with the latest merged file.",
             self.fft_button: "Open `fft.py` with the latest merged file.",
+            self.live_preview_button: "Open `live_preview.py` for real-time data preview during streaming mode.",
         }
         param_short = {
             "Decimation": "Decimation: choose sampling rate",
@@ -287,6 +305,9 @@ class App(ctk.CTk):
         self.presets_box.set("")
 
     def save_streaming_config(self):
+        self.streaming_time = int(self.inputboxes_frame.get_streaming_time())
+        print(f"Streaming time set to: {self.streaming_time*1000} seconds")
+
         config_path = Path("streaming_mode/config.json")
         # Load existing config or create new structure
         if config_path.exists():
@@ -342,6 +363,44 @@ class App(ctk.CTk):
     #         return f"Error: {e}\nOutput: {e.output}\nStderr: {e.stderr}"
     #     except Exception as e:
     #         return f"Exception: {e}"
+
+    def send_streaming_command(self):
+        self.streaming_time = int(self.inputboxes_frame.get_streaming_time())
+        exe_path = "streaming_mode/rpsa_client.exe"
+        params = self.inputboxes_frame.get_streaming_params()
+        file_format = params["format_sd"]
+        # Use relative path for -d and run in streaming_mode dir
+        command = [
+            exe_path,
+            "-s",
+            "-h", ",".join(self.streaming_ips),
+            "-d", "./Data",
+            "-f", file_format.lower(),
+            "-t", str(int(self.streaming_time * 1000)),
+            "-v"
+        ]
+        print(f"Running streaming command: {command} (cwd=streaming_mode)")
+
+        def run():
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                self.after(0, lambda: self.status_line.update_status("Data streaming started."))
+                stdout, stderr = process.communicate()
+                if process.returncode == 0:
+                    self.after(0, lambda: self.status_line.update_status("Data streaming completed successfully."))
+                else:
+                    self.after(0, lambda: self.status_line.update_status(f"Data streaming error: {stderr or stdout}"))
+            except Exception as e:
+                print(f"Exception in streaming thread: {e}")
+                self.after(0, lambda e=e: self.status_line.update_status(f"Failed to run rpsa_client.exe: {e}"))
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
 
     def send_config_command(self, config_path):
         exe_path = str(Path("streaming_mode") / "rpsa_client.exe")
@@ -484,7 +543,7 @@ class App(ctk.CTk):
             time.sleep(1)
                     # Step 2: streaming-server
             self.status_line.update_status(f"{connection.ip}: Starting streaming-server...")
-            stdout, stderr = connection.execute_command("/opt/redpitaya/bin/streaming-server")
+            connection.execute_command("echo TEST && /opt/redpitaya/bin/streaming-server -b -v")
             connection.start_listener()
             self.status_line.update_status(f"{connection.ip}: Streaming server started.")
 
@@ -563,6 +622,22 @@ class App(ctk.CTk):
         self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 10), sticky="nsew")
         self.inputboxes_frame.create_streaming_view()
         self.send_config_button.grid()
+        self.start_streaming_button.grid()
+        # Show Live Preview button in streaming mode
+        self.live_preview_button.grid(row=0, column=2, padx=(6, 0))
+
+    def run_live_preview(self):
+        ips = " ".join(self.streaming_ips)
+        script = Path(__file__).parent / (f"live_preview.py")
+        
+        print(f'launching live_preview.py with arg: {ips}')
+        if not script.exists():
+            self.status_line.update_status("live_preview.py not found")
+            return
+        launched = self._spawn_script(script, self.streaming_ips)
+        print(f"live_preview.py launched: {launched}")
+        if launched:
+            self.status_line.update_status("Live Preview launched")
     
     def check_new_checked_boxes(self): #checking if new checkboxes are checked, if so and not connected already enable connect button
         selected_ips = self.checkboxes_frame.get()

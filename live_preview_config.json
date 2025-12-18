@@ -1,0 +1,9 @@
+{
+  "DATA_DIR": "Data",
+  "SAMPLES_TO_SHOW": 40000,
+  "UPDATE_INTERVAL_MS": 10,
+  "DECIMATION": 1,
+  "SCALE": 20.0,
+  "TDMS_GROUP": "Group",
+  "CHANNELS": ["ch1", "ch2"]
+}
