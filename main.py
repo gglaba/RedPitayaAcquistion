@@ -56,6 +56,7 @@ class App(ctk.CTk):
         self.streaming_ips = [] #list of pitayas in streaming mode
         self.streaming_time = 1.0
         self.pipeline_lock = threading.Lock()
+        self.streaming_process = None
         self.pipeline_running = False
         self.pipeline_active_count = 0
         if not os.path.exists("Data"): #making sure Data folder exists on host
@@ -156,6 +157,10 @@ class App(ctk.CTk):
             command=self.__delete_current_preset
         )
         self.delete_preset_btn.grid(row=0, column=4, padx=10, pady=0, sticky="ew")
+
+        self.stop_streaming_button = ctk.CTkButton(self, text="STOP Streaming", command=self.stop_acquisition,fg_color = '#cc7000',hover_color='#cc8900') #creating stop button
+        self.stop_streaming_button.grid(row=6, column=1, sticky="se", padx=10, pady=10)
+        self.stop_streaming_button.grid_remove()
 
         # --- PARAMETERS (InputBoxes) ---
         self.inputboxes_frame = InputBoxes(self, "Parameters", labels=['Decimation', 'Buffer size', 'Delay', 'Loops','Time','Trigger Source'], status_line=self.status_line)
@@ -395,34 +400,40 @@ class App(ctk.CTk):
     #         return f"Exception: {e}"
 
     def send_streaming_command(self):
-        self.streaming_time = int(self.inputboxes_frame.get_streaming_time())
+        self.stop_streaming_button.grid()
+        self.streaming_time = self.inputboxes_frame.get_streaming_time()
         exe_path = "streaming_mode/rpsa_client.exe"
         params = self.inputboxes_frame.get_streaming_params()
         file_format = params["format_sd"]
-        # Use relative path for -d and run in streaming_mode dir
         command = [
             exe_path,
             "-s",
             "-h", ",".join(self.streaming_ips),
             "-d", "./Data",
             "-f", file_format.lower(),
-            "-t", str(int(self.streaming_time * 1000)),
             "-v"
         ]
+        # Only add -t if time is provided and not empty/zero
+        
+        if self.streaming_time and str(self.streaming_time).strip() not in ("", "0", "0.0"):
+            command += ["-t", str(int(float(self.streaming_time) * 1000))]
+
         print(f"Running streaming command: {command} (cwd=streaming_mode)")
 
         def run():
             try:
                 self.start_streaming_button.configure(state="disabled")
-                process = subprocess.Popen(
+                # Save process handle for STOP
+                self.streaming_process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True
                 )
                 self.after(0, lambda: self.status_line.update_status("Data streaming started."))
-                stdout, stderr = process.communicate()
-                if process.returncode == 0:
+                stdout, stderr = self.streaming_process.communicate()
+                self.streaming_process = None  # Clear after finish
+                if self.streaming_process is None or self.streaming_process.returncode == 0:
                     self.after(0, lambda: self.status_line.update_status("Data streaming completed successfully."))
                     self.start_streaming_button.configure(state="normal")
                 else:
@@ -434,6 +445,19 @@ class App(ctk.CTk):
 
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
+
+    def stop_acquisition(self):
+        # Only affect streaming mode
+        if self.streaming_process and self.streaming_process.poll() is None:
+            try:
+                self.streaming_process.send_signal(subprocess.signal.CTRL_C_EVENT)
+                self.status_line.update_status("Streaming stopped by user.")
+            except Exception as e:
+                self.status_line.update_status(f"Failed to stop streaming: {e}")
+        else:
+            self.status_line.update_status("No streaming process running.")
+        self.stop_streaming_button.grid_remove()
+
 
     def send_config_command(self, config_path):
         exe_path = str(Path("streaming_mode") / "rpsa_client.exe")
@@ -563,9 +587,16 @@ class App(ctk.CTk):
     def start_streaming_mode(self):
         for connection in self.connections:
             threading.Thread(target=self.streaming_worker, args=(connection,), daemon=True).start()
-        self.start_server_button.grid_remove()
-        self.after(1000,self.start_streaming_button.grid())
-        self.send_config_button.grid()
+        self.start_server_button.configure(state="disabled")
+        self.run_client_detect(True)
+        if( len(self.streaming_ips) == 0):
+            self.status_line.update_status("No streaming devices detected.")
+            self.start_server_button.configure(state="normal")
+            return
+        else:
+            self.after(1000,self.start_streaming_button.grid())
+            self.send_config_button.grid()
+            self.start_server_button.grid_remove()
             
             
     def streaming_worker(self,connection):
