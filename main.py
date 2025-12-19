@@ -157,7 +157,7 @@ class App(ctk.CTk):
             width=60,
             command=self.__delete_current_preset
         )
-        self.delete_preset_btn.grid(row=4, column = 0, padx=10, pady=0)
+        self.delete_preset_btn.grid(row=0, column=3, pady=0,sticky="e")
 
         self.stop_streaming_button = ctk.CTkButton(self, text="STOP Streaming", command=self.stop_streaming,fg_color = '#cc7000',hover_color='#cc8900') #creating stop button
         self.stop_streaming_button.grid(row=5,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
@@ -212,7 +212,7 @@ class App(ctk.CTk):
 
         self.send_config_button = ctk.CTkButton(self, text="Send config",command=lambda: self.save_streaming_config())
         self.send_config_button.grid(row=4,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
-        self.send_config_button.grid_remove()
+        self.send_config_button.grid()
 
         self.start_server_button = ctk.CTkButton(self, text="Start Streaming Server",command=lambda: self.start_streaming_mode())
         self.start_server_button.grid(row=3,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
@@ -225,6 +225,17 @@ class App(ctk.CTk):
         self.fft_streaming_button = ctk.CTkButton(self, text="FFT Streaming Data",command=lambda: self.run_fft_streaming())
         self.fft_streaming_button.grid(row=1, column=1, padx=10, pady=10,sticky="e")
         self.fft_streaming_button.grid_remove()
+
+        self.help_button = ctk.CTkButton(
+            master=self,
+            text="?",
+            width=32,
+            height=32,
+            fg_color="#444444",
+            hover_color="#666666",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            command=self.show_streaming_help
+        )
 
         # Open merged file switch (placed with other switches)
         self.open_merged = ctk.StringVar(value=0)
@@ -701,6 +712,31 @@ class App(ctk.CTk):
         self.inputboxes_frame.create_streaming_view()
         self.live_preview_button.grid(row=0, column=0, padx=(10, 6))
         self.fft_streaming_button.grid()
+        self.help_button.grid(row=0, column=0, padx=10, pady=10, sticky="sw")
+
+    def show_streaming_help(self):
+        # Simple popup with streaming instructions
+        help_win = ctk.CTkToplevel(self)
+        help_win.title("Streaming Mode Instructions")
+        help_win.geometry("520x440")
+        help_win.attributes('-topmost', True)
+        help_text = (
+            "Streaming Mode Instructions:\n\n"
+            "1. Click 'Start Streaming Server' to launch the server on all connected devices.\n"
+            "2. Set your streaming parameters, you can also view all possible options in /streaming_mode/config.json file\n"
+            "3. Click 'Send config' to send the configuration to all devices and get RedPitaya IP addresses.\n"
+            "4. Click 'Start Streaming Data' to begin streaming to the Data folder.\n"
+            "   - !IMPORTANT! If you set time parameter to 0, streaming will run continuously.\n"
+            "   - Use the 'STOP Streaming' button to end streaming at any time. Stop Streaming button appears after streaming is launched.\n"
+            "5. Use 'Live Preview' to view real-time signal for each channel of each device(optional).\n"
+            "6. Streamed data files are saved in the Data folder.\n" \
+            "7. You can also change the parameters of live preview to adjust it to your signal, by editing live_preview_config.json"
+            "\n"
+        )
+        label = ctk.CTkLabel(help_win, text=help_text, justify="left", wraplength=500)
+        label.pack(padx=20, pady=20)
+        close_btn = ctk.CTkButton(help_win, text="Close", command=help_win.destroy)
+        close_btn.pack(pady=(0, 20))
 
     def run_live_preview(self):
         file_format = self.inputboxes_frame.get_streaming_params().get("format_sd").lower()

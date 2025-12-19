@@ -299,8 +299,8 @@ class InputBoxes(ctk.CTkFrame):
             "resolution": "Resolution",
             "channel_state_1": "Channel 1 state",
             "channel_state_2": "Channel 2 state",
-            "channel_attenuator_1": "Channel 1 attenuator",
-            "channel_attenuator_2": "Channel 2 attenuator",
+            "channel_attenuator_1": "Channel 1 Gain",
+            "channel_attenuator_2": "Channel 2 Gain",
             "adc_decimation": "ADC decimation",
         }
         # For reverse lookup if needed
@@ -317,6 +317,16 @@ class InputBoxes(ctk.CTkFrame):
             "channel_attenuator_2": ["A_1_1", "A_1_20"],
             "adc_decimation": ["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024", "2048", "4096", "8192"],
         }
+
+        pretty_option_map = {
+            "channel_attenuator_1": {"A_1_1": "±1V", "A_1_20": "±20V"},
+            "channel_attenuator_2": {"A_1_1": "±1V", "A_1_20": "±20V"},
+            "data_type_sd": {"VOLT": "Voltage", "RAW": "Raw"},
+            "format_sd": {"BIN": "Binary", "WAV": "Wave", "TDMS": "TDMS"},
+            "resolution": {"BIT_16": "16-bit", "BIT_8": "8-bit"},
+            "channel_state_1": {"ON": "Enabled", "OFF": "Disabled"},
+            "channel_state_2": {"ON": "Enabled", "OFF": "Disabled"},
+            }
 
         # 4) Load defaults from config.json
         defaults: dict[str, str] = {}
@@ -342,23 +352,37 @@ class InputBoxes(ctk.CTkFrame):
             .grid(row=0, column=0, columnspan=4, padx=10, pady=(10, 4), sticky="ew")
 
         row = 1
+        self._streaming_pretty_to_internal = {}  # pretty -> internal value mapping per key
         for key in editable_keys:
             pretty = pretty_labels.get(key, key.replace("_", " "))
             ctk.CTkLabel(self, text=pretty).grid(row=row, column=0, padx=10, pady=5, sticky="w")
 
-            # Default to config value or first option
-            val = defaults.get(key, options[key][0])
-            var = StringVar(value=val)
-            widget = ctk.CTkComboBox(self, variable=var, values=options[key])
-            widget.grid(row=row, column=1, padx=10, pady=5, sticky="ew", columnspan=3)
+            # Map internal values to pretty display values
+            option_map = pretty_option_map.get(key, None)
+            if option_map:
+                pretty_options = [option_map[v] for v in options[key]]
+                # Build reverse mapping for later
+                self._streaming_pretty_to_internal[key] = {option_map[v]: v for v in options[key]}
+                # Set default value (pretty)
+                internal_default = defaults.get(key, options[key][0])
+                pretty_default = option_map.get(internal_default, internal_default)
+                var = StringVar(value=pretty_default)
+                widget = ctk.CTkComboBox(self, variable=var, values=pretty_options)
+            else:
+                pretty_options = options[key]
+                self._streaming_pretty_to_internal[key] = {v: v for v in options[key]}
+                internal_default = defaults.get(key, options[key][0])
+                var = StringVar(value=internal_default)
+                widget = ctk.CTkComboBox(self, variable=var, values=pretty_options)
 
+            widget.grid(row=row, column=1, padx=10, pady=5, sticky="ew", columnspan=3)
             self.vars[key] = var
             self.inputs[key] = widget
             row += 1
 
         # --- Add "Time" parameter for user only (not saved to JSON) ---
         ctk.CTkLabel(self, text="Time (s)").grid(row=row, column=0, padx=10, pady=5, sticky="w")
-        time_var = StringVar(value="1")
+        time_var = StringVar(value="0")
         time_entry = ctk.CTkEntry(self, textvariable=time_var)
         time_entry.grid(row=row, column=1, padx=10, pady=5, sticky="ew", columnspan=3)
         self.vars["streaming_time"] = time_var
@@ -386,8 +410,10 @@ class InputBoxes(ctk.CTkFrame):
         for k in keys:
             w = self.inputs.get(k)
             if w:
-                out[k] = w.get()
-        # Do NOT include 'streaming_time' in output
+                pretty_val = w.get()
+                # Map pretty value back to internal value
+                internal_val = self._streaming_pretty_to_internal[k].get(pretty_val, pretty_val)
+                out[k] = internal_val
         return out
 
     def get_streaming_time(self) -> str:
