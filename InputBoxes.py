@@ -282,7 +282,7 @@ class InputBoxes(ctk.CTkFrame):
         for k in list(self.inputs.keys()):
             self.inputs.pop(k, None)
 
-        # 3) Define editable keys and option sets
+        # 3) Define editable keys, pretty labels, and option sets
         editable_keys = [
             "data_type_sd",
             "format_sd",
@@ -293,9 +293,23 @@ class InputBoxes(ctk.CTkFrame):
             "channel_attenuator_2",
             "adc_decimation",
         ]
+        pretty_labels = {
+            "data_type_sd": "Data type",
+            "format_sd": "File format",
+            "resolution": "Resolution",
+            "channel_state_1": "Channel 1 state",
+            "channel_state_2": "Channel 2 state",
+            "channel_attenuator_1": "Channel 1 attenuator",
+            "channel_attenuator_2": "Channel 2 attenuator",
+            "adc_decimation": "ADC decimation",
+        }
+        # For reverse lookup if needed
+        self._streaming_pretty_to_key = {v: k for k, v in pretty_labels.items()}
+        self._streaming_key_to_pretty = pretty_labels.copy()
+
         options = {
             "data_type_sd": ["VOLT", "RAW"],
-            "format_sd": ["BIN", "WAV","TDMS"],
+            "format_sd": ["BIN", "WAV", "TDMS"],
             "resolution": ["BIT_16", "BIT_8"],
             "channel_state_1": ["ON", "OFF"],
             "channel_state_2": ["ON", "OFF"],
@@ -329,7 +343,7 @@ class InputBoxes(ctk.CTkFrame):
 
         row = 1
         for key in editable_keys:
-            pretty = key.replace("_", " ")
+            pretty = pretty_labels.get(key, key.replace("_", " "))
             ctk.CTkLabel(self, text=pretty).grid(row=row, column=0, padx=10, pady=5, sticky="w")
 
             # Default to config value or first option

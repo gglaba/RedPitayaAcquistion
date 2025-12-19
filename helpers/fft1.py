@@ -2,12 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # === Configuration ===
-BIN_FILE = r'Data\CH1V_CH2V_2025_12_04_15_52_35.bin'  # Path to your binary file
+BIN_FILE = r'Data/data_file_192.168.137.197_2025-12-18_19-49-20.bin'  # Path to your binary file
 CHANNEL = 'CH2'  # 'CH1' or 'CH2'
 SAMPLING_RATE = 122000  # Sampling rate in Hz (adjust based on your setup)
 
 # === Load Binary Data ===
-data = np.fromfile(BIN_FILE, dtype=np.float32)
+data = np.fromfile(BIN_FILE, dtype=np.int16)
 
 # Split interleaved data into CH1 and CH2
 ch1 = data[::2]

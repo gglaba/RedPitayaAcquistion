@@ -202,7 +202,7 @@ class App(ctk.CTk):
         self.isStreaming = ctk.StringVar(value=0)
         self.switch_streaming = ctk.CTkSwitch(self.switch_local_frame, text="Streaming mode",command = lambda:self.get_Switch_bool(self.isStreaming), variable=self.isStreaming, onvalue=1, offvalue=0)
         self.switch_streaming.grid(row=2, column=0, padx=10, pady=5, sticky="w")
-        #self.switch_streaming.grid_remove()
+        self.switch_streaming.grid()
 
         self.send_config_button = ctk.CTkButton(self, text="Send config",command=lambda: self.save_streaming_config())
         self.send_config_button.grid(row=4,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
@@ -215,6 +215,10 @@ class App(ctk.CTk):
         self.start_streaming_button = ctk.CTkButton(self, text="Start Streaming Data",command=lambda: self.send_streaming_command())
         self.start_streaming_button.grid(row=2,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
         self.start_streaming_button.grid_remove()
+
+        self.fft_streaming_button = ctk.CTkButton(self, text="FFT Streaming Data",command=lambda: self.run_fft_streaming())
+        self.fft_streaming_button.grid(row=1, column=1, padx=10, pady=10,sticky="e")
+        self.fft_streaming_button.grid_remove()
 
         # Open merged file switch (placed with other switches)
         self.open_merged = ctk.StringVar(value=0)
@@ -245,6 +249,9 @@ class App(ctk.CTk):
             self.xyplot_button: "Open `xyplot.py` with the latest merged file.",
             self.fft_button: "Open `fft.py` with the latest merged file.",
             self.live_preview_button: "Open `live_preview.py` for real-time data preview during streaming mode.",
+            self.start_server_button: "Start streaming server on all connected devices.",
+            self.start_streaming_button: "Start data streaming from all connected devices to Data folder.",
+            self.send_config_button: "Send current streaming configuration to all connected devices."
         }
         param_short = {
             "Decimation": "Decimation: choose sampling rate",
@@ -252,7 +259,8 @@ class App(ctk.CTk):
             "Delay": "Delay: pause before acquisition",
             "Loops": "Loops: how many buffers to acquire",
             "Time": "Time: target acquisition time (s).",
-            "Trigger Source": "Trigger Source: source of trigger for acquisition"
+            "Trigger Source": "Trigger Source: source of trigger for acquisition",
+            "resolution": "Resolution: data resolution for streaming (8 or 16 bit)"
         }
 
         param_long = {
@@ -261,7 +269,29 @@ class App(ctk.CTk):
             "Delay": "Delay: delay before starting acquisition",
             "Loops": "Loops: Number of buffers to be acquired, total samples = Buffer size * Loops",
             "Time": "Time: Target acquisition time, total time of the process might be different",
-            "Trigger Source": "Now (immediate - no sync), CHA - CH1, CHB - CH2, PE - positive edge, NE - negative edge"
+            "Trigger Source": "Now (immediate - no sync), CHA - CH1, CHB - CH2, PE - positive edge, NE - negative edge",
+            "resolution": "Resolution: data resolution for streaming (8 or 16 bit)"
+        }
+        streaming_param_short = {
+            "data_type_sd": "Data type: choose between voltage or raw ADC values.",
+            "format_sd": "File format: select BIN, WAV, or TDMS.",
+            "resolution": "Resolution: 8 or 16 bit data.",
+            "channel_state_1": "Channel 1: enable or disable.",
+            "channel_state_2": "Channel 2: enable or disable.",
+            "channel_attenuator_1": "Channel 1 attenuator: 1x or 20x.",
+            "channel_attenuator_2": "Channel 2 attenuator: 1x or 20x.",
+            "adc_decimation": "ADC decimation: sampling rate divider."
+        }
+
+        streaming_param_long = {
+            "data_type_sd": "Data type: VOLT gives calibrated voltage values, RAW gives raw ADC counts.",
+            "format_sd": "File format: BIN is binary, WAV is audio, TDMS is LabVIEW format.",
+            "resolution": "Resolution: choose 8 or 16 bits per sample.",
+            "channel_state_1": "Channel 1 state: ON enables acquisition, OFF disables.",
+            "channel_state_2": "Channel 2 state: ON enables acquisition, OFF disables.",
+            "channel_attenuator_1": "Channel 1 attenuator: A_1_1 is 1x, A_1_20 is 20x attenuation.",
+            "channel_attenuator_2": "Channel 2 attenuator: A_1_1 is 1x, A_1_20 is 20x attenuation.",
+            "adc_decimation": "ADC decimation: divides max sample rate (1=125MSa/s, 2=62.5MSa/s, etc)."
         }
         attach_tooltips(tooltips)
         try:
@@ -531,6 +561,8 @@ class App(ctk.CTk):
         for connection in self.connections:
             threading.Thread(target=self.streaming_worker, args=(connection,), daemon=True).start()
         self.start_server_button.grid_remove()
+        self.after(1000,self.start_streaming_button.grid())
+        self.send_config_button.grid()
             
             
     def streaming_worker(self,connection):
@@ -564,6 +596,9 @@ class App(ctk.CTk):
         self.merge_files_button.grid_remove()
         self.stop_button.grid()
         self.abort_button.grid()
+        self.start_streaming_button.grid_remove()
+        self.send_config_button.grid_remove()
+        self.start_server_button.grid_remove()
     
     def reset_view(self):
         # legacy: keep for compatibility; delegate to restart
@@ -621,20 +656,20 @@ class App(ctk.CTk):
         self.preset_controls_frame.grid_remove()
         self.inputboxes_frame.grid(row=0, column=1, padx=10, pady=(10, 10), sticky="nsew")
         self.inputboxes_frame.create_streaming_view()
-        self.send_config_button.grid()
-        self.start_streaming_button.grid()
-        # Show Live Preview button in streaming mode
-        self.live_preview_button.grid(row=0, column=2, padx=(6, 0))
+        self.live_preview_button.grid(row=0, column=0, padx=(10, 6))
+        self.fft_streaming_button.grid()
 
     def run_live_preview(self):
-        ips = " ".join(self.streaming_ips)
+        file_format = self.inputboxes_frame.get_streaming_params().get("format_sd").lower()
+        ips = [f"{file_format}"] + self.streaming_ips
+        print(f"Live preview format: {file_format}")
         script = Path(__file__).parent / (f"live_preview.py")
         
         print(f'launching live_preview.py with arg: {ips}')
         if not script.exists():
             self.status_line.update_status("live_preview.py not found")
             return
-        launched = self._spawn_script(script, self.streaming_ips)
+        launched = self._spawn_script(script,ips)
         print(f"live_preview.py launched: {launched}")
         if launched:
             self.status_line.update_status("Live Preview launched")
@@ -711,6 +746,7 @@ class App(ctk.CTk):
                 if ip not in [connection.ip for connection in self.connections]:
                     executor.submit(self.connect_to_device, ip)
         self.check_transfer_button()#checking for data files upon connecting
+
 
     def connect_to_device(self, ip): #connecting to pitaya
         try:
@@ -802,7 +838,7 @@ class App(ctk.CTk):
             isLocal_str = str(self.get_Switch_bool(self.isLocal))
 
             # choose binary: use high_dec2 if Decimation < 64
-            binary = "./test2"
+            binary = "./test3_trig"
             try:
                 dec = params.get("Decimation")
                 if dec is not None:

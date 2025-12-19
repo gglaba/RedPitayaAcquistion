@@ -6,7 +6,7 @@ import sys
 import re
 
 # Default configuration
-DEFAULT_BIN = r'Data\CH1V_CH2V_2025_12_04_15_52_35.bin'
+DEFAULT_BIN = r'Data\data_file_192.168.137.197_2025-12-18_19-49-20.bin'
 DEFAULT_CHANNEL = 'CH2'
 DEFAULT_SAMPLING_RATE = 122000
 

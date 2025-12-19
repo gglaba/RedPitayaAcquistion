@@ -6,15 +6,16 @@ from pyqtgraph.Qt import QtCore
 import re
 import json
 # ========= KONFIGURACJA =========
-DATA_DIR = "Data"
-DTYPE = np.int16
-BYTES_PER_SAMPLE = 2
-
-SAMPLES_TO_SHOW = 20000   # okno podglądu
-UPDATE_INTERVAL_MS = 30     # ~33 FPS
-DECIMATION = 1              # np. 10 jeśli sygnał jest ekstremalnie szybki
-SCALE = 20.0
-CHANNELS = ["ch1", "ch2"]  # Channels to display
+config = json.load(open("live_preview_config.json"))
+DATA_DIR = config["DATA_DIR"]
+DTYPE = np.int16 if json.load(open(f"./streaming_mode/config.json"))["adc_streaming"]["resolution"] == 16 else np.int8
+BYTES_PER_SAMPLE = 2 if DTYPE == np.int16 else 1
+SAMPLES_TO_SHOW = config["SAMPLES_TO_SHOW"]   # okno podglądu
+UPDATE_INTERVAL_MS = config["UPDATE_INTERVAL_MS"]     # ~33 FPS
+DECIMATION = config["DECIMATION"]              # np. 10 jeśli sygnał jest ekstremalnie szybki
+SCALE = config["SCALE"]
+TDMS_GROUP = config["TDMS_GROUP"]
+CHANNELS = config["CHANNELS"]
 # ================================
 
 
@@ -105,13 +106,13 @@ class LivePlotBin:
                 print(f"Błąd w subplot {idx+1} ({ip}, {ch}):", e)
                 self.curves[idx].setData([], [])
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python live_preview.py <IP1> [<IP2> ...]")
-        sys.exit(1)
-    device_ips = sys.argv[1:]
-    plotter = LivePlotBin(device_ips)
-    pg.exec()
+# if __name__ == "__main__":
+#     if len(sys.argv) < 2:
+#         print("Usage: python live_preview.py <IP1> [<IP2> ...]")
+#         sys.exit(1)
+#     device_ips = sys.argv[1:]
+#     plotter = LivePlotBin(device_ips)
+#     pg.exec()
 
 
 import os
@@ -122,13 +123,7 @@ from pyqtgraph.Qt import QtCore
 from nptdms import TdmsFile
 import re
 # ========= KONFIGURACJA =========
-DATA_DIR = "Data"
-SAMPLES_TO_SHOW = 40000
-UPDATE_INTERVAL_MS = 10
-DECIMATION = 1
-SCALE = 20.0
-TDMS_GROUP = "Group"
-CHANNELS = ["ch1", "ch2"]
+
 # ================================
 
 def get_latest_tdms_file_for_ip(directory, ip):

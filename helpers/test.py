@@ -4,7 +4,7 @@ import numpy as np
 
 # Ścieżka do pliku TDMS
 def plottdms():
-    tdms_path = "data_file_192.168.137.19_2025-12-16_14-54-22.tdms"
+    tdms_path = "Data\data_file_192.168.137.197_2025-12-18_09-47-40.tdms"
 
     # Wczytanie pliku
     tdms_file = TdmsFile.read(tdms_path)
@@ -27,7 +27,7 @@ def plottdms():
     # --- ADC to Volts conversion ---
     # Red Pitaya: 16-bit ADC, ±1V or ±10V range (check your acquisition settings!)
     # If ±1V range:
-    input_range =1.0  # Change to 10.0 if you used ±10V range
+    input_range =20.0  # Change to 10.0 if you used ±10V range
     max_adc = 32768    # 16-bit signed
     data_volts = data * (input_range / max_adc)
 
