@@ -7,6 +7,7 @@ import threading
 import subprocess
 from pathlib import Path
 import queue
+import psutil
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 import ConnectionManager
@@ -51,7 +52,7 @@ class App(ctk.CTk):
         super().__init__()
         self.command = "cd /root/RedPitaya/G && ./test2" #command used to launch acquisition software on pitaya
         self.connections = [] #list of connected pitayas
-        self.error_queue = queue.Queue() #queue for error messages
+        self.error_queue = queue.Queue() #queue for error messages'
         self.selected_ips = [] #currently selected pitayas from checkboxes
         self.streaming_ips = [] #list of pitayas in streaming mode
         self.streaming_time = 1.0
@@ -156,10 +157,10 @@ class App(ctk.CTk):
             width=60,
             command=self.__delete_current_preset
         )
-        self.delete_preset_btn.grid(row=0, column=4, padx=10, pady=0, sticky="ew")
+        self.delete_preset_btn.grid(row=4, column = 0, padx=10, pady=0)
 
-        self.stop_streaming_button = ctk.CTkButton(self, text="STOP Streaming", command=self.stop_acquisition,fg_color = '#cc7000',hover_color='#cc8900') #creating stop button
-        self.stop_streaming_button.grid(row=6, column=1, sticky="se", padx=10, pady=10)
+        self.stop_streaming_button = ctk.CTkButton(self, text="STOP Streaming", command=self.stop_streaming,fg_color = '#cc7000',hover_color='#cc8900') #creating stop button
+        self.stop_streaming_button.grid(row=5,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
         self.stop_streaming_button.grid_remove()
 
         # --- PARAMETERS (InputBoxes) ---
@@ -413,8 +414,6 @@ class App(ctk.CTk):
             "-f", file_format.lower(),
             "-v"
         ]
-        # Only add -t if time is provided and not empty/zero
-        
         if self.streaming_time and str(self.streaming_time).strip() not in ("", "0", "0.0"):
             command += ["-t", str(int(float(self.streaming_time) * 1000))]
 
@@ -423,7 +422,8 @@ class App(ctk.CTk):
         def run():
             try:
                 self.start_streaming_button.configure(state="disabled")
-                # Save process handle for STOP
+                self.status_line.start_timer()  # Start timer using StatusLine
+                self.streaming_timer_active = True
                 self.streaming_process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
@@ -432,7 +432,9 @@ class App(ctk.CTk):
                 )
                 self.after(0, lambda: self.status_line.update_status("Data streaming started."))
                 stdout, stderr = self.streaming_process.communicate()
-                self.streaming_process = None  # Clear after finish
+                self.streaming_process = None
+                self.status_line.stop_timer()  # Stop timer using StatusLine
+                self.streaming_timer_active = False
                 if self.streaming_process is None or self.streaming_process.returncode == 0:
                     self.after(0, lambda: self.status_line.update_status("Data streaming completed successfully."))
                     self.start_streaming_button.configure(state="normal")
@@ -441,21 +443,28 @@ class App(ctk.CTk):
                     self.start_streaming_button.configure(state="normal")
             except Exception as e:
                 print(f"Exception in streaming thread: {e}")
+                self.status_line.stop_timer()
+                self.streaming_timer_active = False
                 self.after(0, lambda e=e: self.status_line.update_status(f"Failed to run rpsa_client.exe: {e}"))
 
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
 
-    def stop_acquisition(self):
-        # Only affect streaming mode
-        if self.streaming_process and self.streaming_process.poll() is None:
-            try:
-                self.streaming_process.send_signal(subprocess.signal.CTRL_C_EVENT)
-                self.status_line.update_status("Streaming stopped by user.")
-            except Exception as e:
-                self.status_line.update_status(f"Failed to stop streaming: {e}")
-        else:
-            self.status_line.update_status("No streaming process running.")
+    def stop_streaming(self):
+        killed = False
+        try:
+            for p in psutil.process_iter(['name']):
+                if p.info['name'] and p.info['name'].lower() == 'rpsa_client.exe':
+                    p.kill()
+                    killed = True
+            if killed:
+                self.status_line.update_status("All rpsa_client.exe processes killed.")
+            else:
+                self.status_line.update_status("No rpsa_client.exe process running.")
+        except Exception as e:
+            self.status_line.update_status(f"Failed to kill rpsa_client.exe: {e}")
+        self.status_line.stop_timer()  # Stop timer here
+        self.streaming_timer_active = False
         self.stop_streaming_button.grid_remove()
 
 
