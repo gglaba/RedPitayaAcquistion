@@ -413,6 +413,7 @@ class App(ctk.CTk):
 
         def run():
             try:
+                self.start_streaming_button.configure(state="disabled")
                 process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
@@ -423,8 +424,10 @@ class App(ctk.CTk):
                 stdout, stderr = process.communicate()
                 if process.returncode == 0:
                     self.after(0, lambda: self.status_line.update_status("Data streaming completed successfully."))
+                    self.start_streaming_button.configure(state="normal")
                 else:
                     self.after(0, lambda: self.status_line.update_status(f"Data streaming error: {stderr or stdout}"))
+                    self.start_streaming_button.configure(state="normal")
             except Exception as e:
                 print(f"Exception in streaming thread: {e}")
                 self.after(0, lambda e=e: self.status_line.update_status(f"Failed to run rpsa_client.exe: {e}"))
