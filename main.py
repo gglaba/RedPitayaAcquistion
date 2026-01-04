@@ -212,7 +212,7 @@ class App(ctk.CTk):
 
         self.send_config_button = ctk.CTkButton(self, text="Send config",command=lambda: self.save_streaming_config())
         self.send_config_button.grid(row=4,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
-        self.send_config_button.grid()
+        self.send_config_button.grid_remove()
 
         self.start_server_button = ctk.CTkButton(self, text="Start Streaming Server",command=lambda: self.start_streaming_mode())
         self.start_server_button.grid(row=3,rowspan=1, column=0,columnspan=2, padx=10, pady=10)
@@ -718,19 +718,20 @@ class App(ctk.CTk):
         # Simple popup with streaming instructions
         help_win = ctk.CTkToplevel(self)
         help_win.title("Streaming Mode Instructions")
-        help_win.geometry("520x440")
+        help_win.geometry("620x440")
         help_win.attributes('-topmost', True)
         help_text = (
             "Streaming Mode Instructions:\n\n"
-            "1. Click 'Start Streaming Server' to launch the server on all connected devices.\n"
-            "2. Set your streaming parameters, you can also view all possible options in /streaming_mode/config.json file\n"
-            "3. Click 'Send config' to send the configuration to all devices and get RedPitaya IP addresses.\n"
-            "4. Click 'Start Streaming Data' to begin streaming to the Data folder.\n"
-            "   - !IMPORTANT! If you set time parameter to 0, streaming will run continuously.\n"
-            "   - Use the 'STOP Streaming' button to end streaming at any time. Stop Streaming button appears after streaming is launched.\n"
-            "5. Use 'Live Preview' to view real-time signal for each channel of each device(optional).\n"
-            "6. Streamed data files are saved in the Data folder.\n" \
-            "7. You can also change the parameters of live preview to adjust it to your signal, by editing live_preview_config.json"
+            "1. Click 'Start Streaming Server' to launch the server on all connected devices.\n\n"
+            "2. Set your streaming parameters, you can also view all possible options in /streaming_mode/config.json file\n\n"
+            "3. Click 'Send config' to send the configuration to all devices and get RedPitaya IP addresses.\n\n"
+            "4. Click 'Start Streaming Data' to begin streaming to the Data folder.\n\n"
+            "   - !IMPORTANT! If you set time parameter to 0, streaming will run continuously.\n\n"
+            "   - Use the 'STOP Streaming' button to end streaming at any time. Stop Streaming button appears after streaming is launched.\n\n"
+            "5. Use 'Live Preview' to view real-time signal for each channel of each device(optional).\n\n"
+            "6. Streamed data files are saved in the Data folder.\n\n" \
+            "7. You can also change the parameters of live preview to adjust it to your signal, by editing live_preview_config.json \n\n"
+            "8. FFT button allows you to view FFT of the latest fully streamed data(optional)."
             "\n"
         )
         label = ctk.CTkLabel(help_win, text=help_text, justify="left", wraplength=500)

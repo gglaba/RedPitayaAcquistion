@@ -325,7 +325,7 @@ class InputBoxes(ctk.CTkFrame):
             "format_sd": {"BIN": "Binary", "WAV": "Wave", "TDMS": "TDMS"},
             "resolution": {"BIT_16": "16-bit", "BIT_8": "8-bit"},
             "channel_state_1": {"ON": "Enabled", "OFF": "Disabled"},
-            "channel_state_2": {"ON": "Enabled", "OFF": "Disabled"},
+            "channel_state_2": {"ON": "Enabled", "OFF": "Disabled"}
             }
 
         # 4) Load defaults from config.json
