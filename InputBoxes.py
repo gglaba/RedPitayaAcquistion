@@ -301,7 +301,7 @@ class InputBoxes(ctk.CTkFrame):
             "channel_state_2": "Channel 2 state",
             "channel_attenuator_1": "Channel 1 Gain",
             "channel_attenuator_2": "Channel 2 Gain",
-            "adc_decimation": "ADC decimation",
+            "adc_decimation": "ADC decimation (Sampling Rate)",
         }
         # For reverse lookup if needed
         self._streaming_pretty_to_key = {v: k for k, v in pretty_labels.items()}
@@ -317,6 +317,24 @@ class InputBoxes(ctk.CTkFrame):
             "channel_attenuator_2": ["A_1_1", "A_1_20"],
             "adc_decimation": ["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024", "2048", "4096", "8192"],
         }
+        
+        _adc_decimation_pretty = {
+            "1":   "1 (125 MSps)",
+            "2":   "2 (62.5 MSps)",
+            "4":   "4 (31.25 MSps)",
+            "8":   "8 (15.625 MSps)",
+            "16":  "16 (7.8125 MSps)",
+            "32":  "32 (3.906 MSps)",
+            "64":  "64 (1.953 MSps)",
+            "128": "128 (0.977 MSps)",
+            "256": "256 (488 kSps)",
+            "512": "512 (244 kSps)",
+            "1024": "1024 (122 kSps)",
+            "2048": "2048 (61 kSps)",
+            "4096": "4096 (30.5 kSps)",
+            "8192": "8192 (15.3 kSps)",
+        }
+
 
         pretty_option_map = {
             "channel_attenuator_1": {"A_1_1": "±1V", "A_1_20": "±20V"},
@@ -325,7 +343,9 @@ class InputBoxes(ctk.CTkFrame):
             "format_sd": {"BIN": "Binary", "WAV": "Wave", "TDMS": "TDMS"},
             "resolution": {"BIT_16": "16-bit", "BIT_8": "8-bit"},
             "channel_state_1": {"ON": "Enabled", "OFF": "Disabled"},
-            "channel_state_2": {"ON": "Enabled", "OFF": "Disabled"}
+            "channel_state_2": {"ON": "Enabled", "OFF": "Disabled"},
+            "adc_decimation": _adc_decimation_pretty,
+            
             }
 
         # 4) Load defaults from config.json

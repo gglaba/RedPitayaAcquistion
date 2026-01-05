@@ -50,7 +50,6 @@ class ToolTip:
                 pass
 
     def _motion(self, event=None):
-        # opcjonalnie możemy przesuwać tooltip za kursorem; prosty wariant nic nie robi
         pass
 
 # Funkcja pomocnicza do przypięcia wielu tooltipów
