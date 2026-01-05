@@ -1,7 +1,7 @@
 from tkinter import *
 import customtkinter as ctk
 
-#checkboxes class handling labels and disconnect buttons
+# checkboxes class handling labels and disconnect buttons
 
 class CheckBoxes(ctk.CTkFrame):
     def __init__(self, master, title, ips):
@@ -15,37 +15,57 @@ class CheckBoxes(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
 
-        for i, ips in enumerate(self.ips): #creating checkboxes for each ip
-            checkbox = ctk.CTkCheckBox(self, text=ips)
+        for i, ip in enumerate(self.ips):  # creating checkboxes for each ip
+            var = IntVar()
+            checkbox = ctk.CTkCheckBox(self, text=ip, variable=var)
             checkbox.grid(row=i + 1, column=0, padx=10, pady=(15, 15), sticky="w")
             self.checkboxes.append(checkbox)
+            self.vars.append(var)
 
-            disconnect_button = ctk.CTkButton(self, text="Disconnect", command=lambda ip=ips: self.master.disconnect_from_device(ip)) #creating disconnect button for each ip
+            disconnect_button = ctk.CTkButton(
+                self,
+                text="Disconnect",
+                command=lambda ip=ip: self.master.disconnect_from_device(ip)
+            )
             disconnect_button.grid(row=i + 1, column=0, padx=10, pady=10, sticky="w")
-            disconnect_button.grid_remove() #hiding disconnect buttons
-            self.disconnect_buttons[ips] = disconnect_button
+            disconnect_button.grid_remove()  # hiding disconnect buttons
+            self.disconnect_buttons[ip] = disconnect_button
 
-            label = ctk.CTkLabel(self, text="Disconnected", fg_color="red") #creating status label for each ip
+            label = ctk.CTkLabel(self, text="Disconnected", fg_color="red")
             label.grid(row=i + 1, column=1, padx=10, pady=(10, 0), sticky="ew")
             self.labels.append(label)
 
-        self.title = ctk.CTkLabel(self, text=self.title, fg_color="gray30", corner_radius=5)
-        self.title.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="ew")
+        self.title_label = ctk.CTkLabel(self, text=self.title, fg_color="gray30", corner_radius=5)
+        self.title_label.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="ew")
 
-    def show_disconnect_button(self, ip): #method for showing disconnect button for connected ip
+        # Add "Connect to All" button
+        self.connect_all_btn = ctk.CTkButton(
+            self,
+            text="Connect to All",
+            command=self.select_all_and_connect
+        )
+        self.connect_all_btn.grid(row=len(self.ips) + 2, column=0, padx=10, pady=5, sticky="ew")
+
+    def show_disconnect_button(self, ip):
         self.disconnect_buttons[ip].grid()
-    
-    def hide_disconnect_button(self, ip): #method for hiding disconnect button 
-        self.disconnect_buttons[ip].grid_remove()
 
-    def get(self): #getter for selected checkboxes
+    def hide_disconnect_button(self, ip):
+        self.disconnect_buttons[ip].grid_remove()
+        
+    def hide_connect_all_button(self): 
+        self.connect_all_btn.grid_remove()
+        
+    def show_connect_all_button(self): 
+        self.connect_all_btn.grid()
+
+    def get(self):
         selected_ips = []
         for checkbox in self.checkboxes:
             if checkbox.get() == 1:
-                selected_ips.append(checkbox.cget("text")) #adding selected ip to the list
-        return selected_ips 
+                selected_ips.append(checkbox.cget("text"))
+        return selected_ips
 
-    def update_label(self, ip, status): #method for updating status label, if connected then green, if disconnected then red
+    def update_label(self, ip, status):
         for i, checkbox in enumerate(self.checkboxes):
             if checkbox.cget("text") == ip:
                 self.labels[i].configure(text=status)
@@ -54,3 +74,12 @@ class CheckBoxes(ctk.CTkFrame):
                 else:
                     self.labels[i].configure(fg_color="red")
                 break
+
+    def select_all(self):
+        for var in self.vars:
+            var.set(1)
+
+    def select_all_and_connect(self):
+        self.select_all()
+        if hasattr(self.master, "start_connect_to_devices_thread"):
+            self.master.start_connect_to_devices_thread()

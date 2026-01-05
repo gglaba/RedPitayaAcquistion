@@ -85,7 +85,7 @@ class App(ctk.CTk):
 
         self.checkboxes_frame = CheckBoxes(self, "Devices", ips=[ENV_MASTERRP, ENV_SLAVE1, ENV_SLAVE2]) #creating checkbox for each device (using checkboxes class)
         self.checkboxes_frame.grid(row=0, column=0,rowspan = 3, padx=10, pady=(10, 0), sticky="nsew")
-
+        self.checkboxes_frame.master.on_connect_all = self.connect_all_devices
         self.connect_button = ctk.CTkButton(self, text="Connect to Pitayas", command=self.start_connect_to_devices_thread) #creating connect button
         self.connect_button.grid(row=3, column=0,columnspan=2, padx=10, pady=10)
 
@@ -350,6 +350,13 @@ class App(ctk.CTk):
         self.presets.delete_preset(name)
         self.presets_box.configure(values=list(self.presets.load_all().keys()))
         self.presets_box.set("")
+        
+    def connect_all_devices(self):
+        self.checkboxes_frame.connect_all_btn.configure(state="disabled")
+        self.checkboxes_frame.hide_connect_all_button()
+        self.selected_ips = self.checkboxes_frame.get()
+        self.start_connect_to_devices_thread()
+        self.checkboxes_frame.show_connect_all_button()
 
     def save_streaming_config(self):
         self.streaming_time = int(self.inputboxes_frame.get_streaming_time())
