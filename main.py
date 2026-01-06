@@ -59,6 +59,8 @@ class App(ctk.CTk):
         self.selected_ips = [] #currently selected pitayas from checkboxes
         self.streaming_ips = [] #list of pitayas in streaming mode
         self.streaming_time = 1.0
+        self._streaming_key_last_time = 0  # For debounce
+        self._streaming_key_debounce_ms = 500 
         self.start_streaming_key = STREAMINGKEY
         self.stop_streaming_key = STOPKEY
         self.pipeline_lock = threading.Lock()
@@ -251,7 +253,7 @@ class App(ctk.CTk):
         self.check_new_checked_boxes() #constantly checking for new checked boxes
         self.check_transfer_button() #if remote has BIN/CSV files then enable transfer button
         self.check_files_to_merge()
-        self.bind_streaming_keys()
+        #self.send_config_button.grid()
         #self.bind("<Return>", lambda event:self.initiate_acquisition())
         #self.acquire_button.configure(state="normal")
         tooltips = {
@@ -338,21 +340,54 @@ class App(ctk.CTk):
             pass
 
     def bind_streaming_keys(self):
-        try:
-            self.unbind(f"<{self.start_streaming_key}>")
-        except Exception:
-            pass
-        try:
-            self.unbind(f"<{self.stop_streaming_key}>")
-        except Exception:
-            pass
-        # Bind new keys
-        if self.start_streaming_key:
-            self.bind(f"<{self.start_streaming_key}>", lambda e: self.send_streaming_command())
-        if self.stop_streaming_key:
-            self.bind(f"<{self.stop_streaming_key}>", lambda e: self.stop_streaming())
+            try:
+                self.unbind(f"<{self.start_streaming_key}>")
+            except Exception:
+                pass
+            try:
+                self.unbind(f"<{self.stop_streaming_key}>")
+            except Exception:
+                pass
+            # Bind new keys with debounce wrappers
+            if self.start_streaming_key:
+                self.bind(f"<{self.start_streaming_key}>", self._debounced_start_streaming)
+            if self.stop_streaming_key:
+                self.bind(f"<{self.stop_streaming_key}>", self._debounced_stop_streaming)
 
 
+    def _debounced_start_streaming(self, event=None):
+        now = time.time()
+        if now - getattr(self, "_streaming_key_last_time", 0) < self._streaming_key_debounce_ms / 1000.0:
+            return  # Debounced
+        self._streaming_key_last_time = now
+        # Prevent running if already running
+        if getattr(self, "streaming_process", None) is not None and self.streaming_process.poll() is None:
+            self.status_line.update_status("Streaming is already running.")
+            return
+        self.send_streaming_command()
+
+    def _debounced_stop_streaming(self, event=None):
+        now = time.time()
+        if now - getattr(self, "_streaming_key_last_time", 0) < self._streaming_key_debounce_ms / 1000.0:
+            return  # Debounced
+        self._streaming_key_last_time = now
+        self.stop_streaming()
+
+    def update_env_file(self, key, value):
+        env_path = Path(__file__).parent / ".env"
+        if not env_path.exists():
+            return
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        pattern = re.compile(rf"^{re.escape(key)}\s*=\s*.*$", re.IGNORECASE)
+        found = False
+        for i, line in enumerate(lines):
+            if pattern.match(line.strip()):
+                lines[i] = f"{key} = '{value}'"
+                found = True
+                break
+        if not found:
+            lines.append(f"{key} = '{value}'")
+        env_path.write_text("\n".join(lines), encoding="utf-8")
 
     def on_preset_selected(self, _value: str):
         name = self.presets_box.get()
@@ -438,6 +473,9 @@ class App(ctk.CTk):
     #         return f"Exception: {e}"
 
     def send_streaming_command(self):
+        if getattr(self, "streaming_process", None) is not None and self.streaming_process.poll() is None:
+            self.status_line.update_status("Streaming is already running.")
+            return
         self.stop_streaming_button.grid()
         self.streaming_time = self.inputboxes_frame.get_streaming_time()
         exe_path = "streaming_mode/rpsa_client.exe"
@@ -488,6 +526,7 @@ class App(ctk.CTk):
         thread.start()
 
     def stop_streaming(self):
+        self._streaming_key_last_time = 0
         killed = False
         try:
             for p in psutil.process_iter(['name']):
@@ -638,11 +677,15 @@ class App(ctk.CTk):
         if( len(self.streaming_ips) == 0):
             self.status_line.update_status("No streaming devices detected.")
             self.start_server_button.configure(state="normal")
+
             return
         else:
             self.after(1000,self.start_streaming_button.grid())
             self.send_config_button.grid()
             self.start_server_button.grid_remove()
+            self.bind_streaming_keys()
+            self.set_keys_btn.grid()
+
             
             
     def streaming_worker(self,connection):
@@ -739,6 +782,69 @@ class App(ctk.CTk):
         self.live_preview_button.grid(row=0, column=0, padx=(10, 6))
         self.fft_streaming_button.grid()
         self.help_button.grid(row=0, column=0, padx=10, pady=10, sticky="sw")
+        self.set_keys_btn = ctk.CTkButton(self.switch_local_frame, text="Set Streaming Keys", command=self.open_streaming_keys_dialog, width=120)
+        self.set_keys_btn.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
+        self.set_keys_btn.grid_remove()
+
+    def open_streaming_keys_dialog(self):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Set Streaming Keys")
+        dialog.geometry("350x200")
+        dialog.attributes('-topmost', True)
+
+        ctk.CTkLabel(dialog, text="Start streaming key:").grid(row=0, column=0, padx=10, pady=10)
+        start_key_label = ctk.CTkLabel(dialog, text=self.start_streaming_key or "Not set", width=80)
+        start_key_label.grid(row=0, column=1, padx=10, pady=10)
+        set_start_btn = ctk.CTkButton(dialog, text="Set Start Key", width=100)
+        set_start_btn.grid(row=0, column=2, padx=10, pady=10)
+
+        ctk.CTkLabel(dialog, text="Stop streaming key:").grid(row=1, column=0, padx=10, pady=10)
+        stop_key_label = ctk.CTkLabel(dialog, text=self.stop_streaming_key or "Not set", width=80)
+        stop_key_label.grid(row=1, column=1, padx=10, pady=10)
+        set_stop_btn = ctk.CTkButton(dialog, text="Set Stop Key", width=100)
+        set_stop_btn.grid(row=1, column=2, padx=10, pady=10)
+
+        info_label = ctk.CTkLabel(dialog, text="Click a button, then press any key to set.", text_color="#888888")
+        info_label.grid(row=2, column=0, columnspan=3, pady=(0, 10))
+
+        def capture_key(which):
+            info_label.configure(text=f"Press any key for {'Start' if which == 'start' else 'Stop'}...")
+            def on_key(event):
+                key = event.keysym
+                if which == "start":
+                    start_key_label.configure(text=key)
+                    dialog.unbind("<Key>")
+                    dialog.focus_set()
+                else:
+                    stop_key_label.configure(text=key)
+                    dialog.unbind("<Key>")
+                    dialog.focus_set()
+                info_label.configure(text="Click a button, then press any key to set.")
+            dialog.bind("<Key>", on_key)
+            dialog.focus_set()
+
+        set_start_btn.configure(command=lambda: capture_key("start"))
+        set_stop_btn.configure(command=lambda: capture_key("stop"))
+
+        def save_keys():
+            new_start = start_key_label.cget("text")
+            new_stop = stop_key_label.cget("text")
+            # Unbind old keys
+            try: self.unbind(f"<{self.start_streaming_key}>")
+            except Exception: pass
+            try: self.unbind(f"<{self.stop_streaming_key}>")
+            except Exception: pass
+            # Set and bind new keys
+            self.start_streaming_key = new_start
+            self.stop_streaming_key = new_stop
+            self.bind_streaming_keys()
+            self.update_env_file("STREAMINGKEY", new_start)
+            self.update_env_file("STOPKEY", new_stop)
+            self.status_line.update_status(f"Streaming keys set: Start={new_start}, Stop={new_stop}")
+            dialog.destroy()
+
+        save_btn = ctk.CTkButton(dialog, text="Save", command=save_keys, width=80)
+        save_btn.grid(row=3, column=0, columnspan=3, pady=10)
 
     def show_streaming_help(self):
         # Simple popup with streaming instructions
