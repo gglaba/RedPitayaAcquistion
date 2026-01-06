@@ -1,3 +1,4 @@
+import time
 from tkinter import *
 import customtkinter as ctk
 
@@ -81,5 +82,13 @@ class CheckBoxes(ctk.CTkFrame):
 
     def select_all_and_connect(self):
         self.select_all()
-        if hasattr(self.master, "start_connect_to_devices_thread"):
-            self.master.start_connect_to_devices_thread()
+        self.connect_all_btn.configure(state="disabled")
+        try:
+            self.connect_all_btn.configure(state="disabled")
+            if hasattr(self.master, "start_connect_to_devices_thread"):
+                self.master.start_connect_to_devices_thread()
+        finally:
+            if hasattr(self.master, "connections"):
+                    if len(self.master.connections) != 2:
+                        self.connect_all_btn.configure(state="normal")
+            

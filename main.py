@@ -39,6 +39,8 @@ ENV_LOCALPATH = os.getenv("LOCALPATH")
 ENV_REMOTEPATH = os.getenv("REMOTEPATH")
 ENV_LOCAL_DIR = os.getenv("LOCAL_DIR")
 ENV_ARCHIVE_DIR = os.getenv("ARCHIVEPATH") 
+STREAMINGKEY = os.getenv("STREAMINGKEY")
+STOPKEY = os.getenv("STOPKEY")
 
 pitaya_dict = {
     ENV_MASTERRP: 'Z:/',
@@ -52,10 +54,13 @@ class App(ctk.CTk):
         super().__init__()
         self.command = "cd /root/RedPitaya/G && ./test2" #command used to launch acquisition software on pitaya
         self.connections = [] #list of connected pitayas
+        self.selected_ips = [] #currently selected pitayas from checkboxes
         self.error_queue = queue.Queue() #queue for error messages'
         self.selected_ips = [] #currently selected pitayas from checkboxes
         self.streaming_ips = [] #list of pitayas in streaming mode
         self.streaming_time = 1.0
+        self.start_streaming_key = STREAMINGKEY
+        self.stop_streaming_key = STOPKEY
         self.pipeline_lock = threading.Lock()
         self.streaming_process = None
         self.pipeline_running = False
@@ -246,7 +251,8 @@ class App(ctk.CTk):
         self.check_new_checked_boxes() #constantly checking for new checked boxes
         self.check_transfer_button() #if remote has BIN/CSV files then enable transfer button
         self.check_files_to_merge()
-        self.bind("<Return>", lambda event:self.initiate_acquisition())
+        self.bind_streaming_keys()
+        #self.bind("<Return>", lambda event:self.initiate_acquisition())
         #self.acquire_button.configure(state="normal")
         tooltips = {
             self.checkboxes_frame: "Device list. Select devices to connect to and run acquisition on.",
@@ -331,6 +337,22 @@ class App(ctk.CTk):
         # bezpieczne pominięcie, jeśli struktura InputBoxes się zmieni
             pass
 
+    def bind_streaming_keys(self):
+        try:
+            self.unbind(f"<{self.start_streaming_key}>")
+        except Exception:
+            pass
+        try:
+            self.unbind(f"<{self.stop_streaming_key}>")
+        except Exception:
+            pass
+        # Bind new keys
+        if self.start_streaming_key:
+            self.bind(f"<{self.start_streaming_key}>", lambda e: self.send_streaming_command())
+        if self.stop_streaming_key:
+            self.bind(f"<{self.stop_streaming_key}>", lambda e: self.stop_streaming())
+
+
 
     def on_preset_selected(self, _value: str):
         name = self.presets_box.get()
@@ -352,11 +374,8 @@ class App(ctk.CTk):
         self.presets_box.set("")
         
     def connect_all_devices(self):
-        self.checkboxes_frame.connect_all_btn.configure(state="disabled")
-        self.checkboxes_frame.hide_connect_all_button()
         self.selected_ips = self.checkboxes_frame.get()
         self.start_connect_to_devices_thread()
-        self.checkboxes_frame.show_connect_all_button()
 
     def save_streaming_config(self):
         self.streaming_time = int(self.inputboxes_frame.get_streaming_time())
@@ -769,7 +788,6 @@ class App(ctk.CTk):
             #add functionality that checks for suddenly disconnected devices
         elif len(self.selected_ips) == len(self.connections):
             self.connect_button.configure(state="disabled")
-
         self.after(100, self.check_new_checked_boxes)
 
     def check_transfer_button(self):
