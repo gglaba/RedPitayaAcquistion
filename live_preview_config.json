@@ -1,9 +1,12 @@
 {
-  "DATA_DIR": "Data",
-  "SAMPLES_TO_SHOW": 500,
-  "UPDATE_INTERVAL_MS": 10,
-  "DECIMATION": 100,
-  "SCALE": 20.0,
-  "TDMS_GROUP": "Group",
-  "CHANNELS": ["ch1", "ch2"]
+    "DATA_DIR": "Data",
+    "SAMPLES_TO_SHOW": 500,
+    "UPDATE_INTERVAL_MS": 10,
+    "DECIMATION": 100,
+    "SCALE": 20.0,
+    "TDMS_GROUP": "Group",
+    "CHANNELS": [
+        "ch1",
+        "ch2"
+    ]
 }

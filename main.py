@@ -103,6 +103,7 @@ class App(ctk.CTk):
         self.preset_controls_frame.grid_columnconfigure(2, weight=1)
         self.preset_controls_frame.grid_columnconfigure(3, weight=0)
         self.preset_controls_frame.grid_columnconfigure(4, weight=1)
+    
 
         self._bottom_right_frame = ctk.CTkFrame(self, fg_color="transparent")
         self._bottom_right_frame.grid(row=7, column=1, sticky="se", padx=10, pady=10)
@@ -195,6 +196,7 @@ class App(ctk.CTk):
         self.abort_button = ctk.CTkButton(self, text="ABORT", command=self.abort_acquisition,fg_color = '#cc0000',hover_color='#cc1111') #creating abort button
         self.abort_button.grid(row=3, column=1,columnspan=2, padx=10, pady=10,sticky="nsew")
         self.abort_button.grid_remove()
+        self.acquire_button.configure(state="normal")
 
         self.isLocal = ctk.StringVar(value=0)
         self.switch_local_frame = ctk.CTkFrame(self)
@@ -551,7 +553,7 @@ class App(ctk.CTk):
             "-c",
             "-h", ",".join(self.streaming_ips),
             "-s", "F",
-            "-f", str(config_path),
+            "-f", str(config_path),  
             "-v"
         ]
 
@@ -680,7 +682,7 @@ class App(ctk.CTk):
 
             return
         else:
-            self.after(1000,self.start_streaming_button.grid())
+            self.after(1000, lambda: self.start_streaming_button.grid())
             self.send_config_button.grid()
             self.start_server_button.grid_remove()
             self.bind_streaming_keys()
@@ -782,9 +784,69 @@ class App(ctk.CTk):
         self.live_preview_button.grid(row=0, column=0, padx=(10, 6))
         self.fft_streaming_button.grid()
         self.help_button.grid(row=0, column=0, padx=10, pady=10, sticky="sw")
+
         self.set_keys_btn = ctk.CTkButton(self.switch_local_frame, text="Set Streaming Keys", command=self.open_streaming_keys_dialog, width=120)
         self.set_keys_btn.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
         self.set_keys_btn.grid_remove()
+
+        # Add Edit Live Preview Config button below Set Streaming Keys
+        self.edit_live_preview_btn = ctk.CTkButton(self.switch_local_frame, text="Edit Live Preview Config", command=self.open_live_preview_config_dialog, width=180)
+        self.edit_live_preview_btn.grid(row=6, column=0, padx=20, pady=5, sticky="ew")
+    def open_live_preview_config_dialog(self):
+        import json
+        config_path = Path("live_preview_config.json")
+        if not config_path.exists():
+            tkinter.messagebox.showerror("Error", "live_preview_config.json not found.")
+            return
+        try:
+            with config_path.open("r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception as e:
+            tkinter.messagebox.showerror("Error", f"Failed to load config: {e}")
+            return
+
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Edit Live Preview Config")
+        dialog.geometry("420x420")
+        dialog.attributes('-topmost', True)
+
+        entries = {}
+        row = 0
+        for key, value in config.items():
+            ctk.CTkLabel(dialog, text=key+":").grid(row=row, column=0, padx=10, pady=6, sticky="w")
+            entry = ctk.CTkEntry(dialog, width=220)
+            entry.insert(0, str(value))
+            entry.grid(row=row, column=1, padx=10, pady=6, sticky="ew")
+            entries[key] = entry
+            row += 1
+
+        def save_config():
+            new_config = {}
+            for k, e in entries.items():
+                v = e.get()
+                # Try to convert to int/float if original was numeric
+                orig = config[k]
+                if isinstance(orig, int):
+                    try:
+                        v = int(v)
+                    except Exception:
+                        pass
+                elif isinstance(orig, float):
+                    try:
+                        v = float(v)
+                    except Exception:
+                        pass
+                new_config[k] = v
+            try:
+                with config_path.open("w", encoding="utf-8") as f:
+                    json.dump(new_config, f, indent=4)
+                tkinter.messagebox.showinfo("Success", "Config updated.")
+                dialog.destroy()
+            except Exception as e:
+                tkinter.messagebox.showerror("Error", f"Failed to save config: {e}")
+
+        save_btn = ctk.CTkButton(dialog, text="Save", command=save_config, width=80)
+        save_btn.grid(row=row, column=0, columnspan=2, pady=16)
 
     def open_streaming_keys_dialog(self):
         dialog = ctk.CTkToplevel(self)

@@ -248,13 +248,10 @@ class ConnectionManager:
 
                 merged_data.tofile(merged_filepath)
                 merged_outputs.append(merged_filepath)
-
-                # Write a small status JSON so other local processes can detect conversion completion
                 try:
                     status = {"timestamp": timestamp, "merged": str(merged_filepath)}
                     status_file = target_path / f"{timestamp}_merged_status.json"
                     status_file.write_text(json.dumps(status))
-                    # Best-effort: set local environment flag (won't persist system-wide)
                     os.environ['PY_VAR7'] = 'True'
                     self.log(f"Merged output created: {merged_filepath}")
                 except Exception as e:
